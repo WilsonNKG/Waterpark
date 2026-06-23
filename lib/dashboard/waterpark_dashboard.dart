@@ -5,6 +5,8 @@ import 'package:waterpark/dashboard/pages/dashboard_overview_page.dart';
 import 'package:waterpark/dashboard/pages/ticketing_overview_page.dart';
 import 'package:waterpark/dashboard/widgets/dashboard_common.dart';
 
+const kWaterparkLogoAsset = 'logo waterpark.png';
+
 class WaterparkDashboard extends StatefulWidget {
   const WaterparkDashboard({super.key});
 
@@ -27,24 +29,22 @@ class _WaterparkDashboardState extends State<WaterparkDashboard> {
           Navigator.of(context).maybePop();
         },
       ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            const Positioned(
-              top: -80,
-              right: -70,
-              child: BackgroundOrb(size: 280, color: Color(0x114CB6F5)),
-            ),
-            const Positioned(
-              bottom: -120,
-              left: -60,
-              child: BackgroundOrb(size: 260, color: Color(0x1000B8A9)),
-            ),
-            SingleChildScrollView(
-              child: DashboardMainPanel(selected: _selectedSection),
-            ),
-          ],
-        ),
+      body: Stack(
+        children: [
+          const Positioned(
+            top: -80,
+            right: -70,
+            child: BackgroundOrb(size: 280, color: Color(0x114CB6F5)),
+          ),
+          const Positioned(
+            bottom: -120,
+            left: -60,
+            child: BackgroundOrb(size: 260, color: Color(0x1000B8A9)),
+          ),
+          SingleChildScrollView(
+            child: DashboardMainPanel(selected: _selectedSection),
+          ),
+        ],
       ),
     );
   }
@@ -256,7 +256,6 @@ class DashboardMainPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 18),
         const DashboardTopBar(),
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
@@ -278,7 +277,7 @@ class DashboardTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 4),
       decoration: BoxDecoration(
         gradient: WaterparkBrand.oceanGradient,
         boxShadow: const [
@@ -289,61 +288,56 @@ class DashboardTopBar extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          Builder(
-            builder: (context) {
-              return Semantics(
-                button: true,
-                label: 'Open navigation',
-                child: GestureDetector(
-                  onTap: () => Scaffold.of(context).openDrawer(),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(14),
+          Row(
+            children: [
+              Builder(
+                builder: (context) {
+                  return Semantics(
+                    button: true,
+                    label: 'Open navigation',
+                    child: GestureDetector(
+                      onTap: () => Scaffold.of(context).openDrawer(),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.menu_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.menu_rounded,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                ),
-              );
-            },
+                  );
+                },
+              ),
+              const Spacer(),
+              const ConnectivityStatusIndicator(
+                status: ConnectivityState.good,
+                tooltip: 'Connected',
+              ),
+              const SizedBox(width: 12),
+              const TopBarIcon(Icons.refresh_rounded, tooltip: 'Refresh'),
+              const SizedBox(width: 10),
+              const CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.white,
+                child: Icon(Icons.person, color: WaterparkBrand.gray, size: 18),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Welcome back,',
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Admin',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+          IgnorePointer(
+            child: Image.asset(
+              kWaterparkLogoAsset,
+              height: 58,
+              fit: BoxFit.contain,
             ),
-          ),
-          const TopBarIcon(Icons.search_rounded),
-          const SizedBox(width: 10),
-          const TopBarIcon(Icons.notifications_none_rounded, badge: '3'),
-          const SizedBox(width: 10),
-          const CircleAvatar(
-            radius: 20,
-            backgroundColor: Colors.white,
-            child: Icon(Icons.person, color: WaterparkBrand.gray),
           ),
         ],
       ),
@@ -352,48 +346,47 @@ class DashboardTopBar extends StatelessWidget {
 }
 
 class TopBarIcon extends StatelessWidget {
-  const TopBarIcon(this.icon, {this.badge, super.key});
+  const TopBarIcon(this.icon, {required this.tooltip, super.key});
 
   final IconData icon;
-  final String? badge;
+  final String tooltip;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: Colors.white, size: 22),
-        ),
-        if (badge != null)
-          Positioned(
-            top: -5,
-            right: -5,
-            child: Container(
-              width: 18,
-              height: 18,
-              decoration: const BoxDecoration(
-                color: WaterparkBrand.accentRed,
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                badge!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-      ],
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 24,
+        height: 24,
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
+  }
+}
+
+enum ConnectivityState { good, warning, poor }
+
+class ConnectivityStatusIndicator extends StatelessWidget {
+  const ConnectivityStatusIndicator({
+    required this.status,
+    required this.tooltip,
+    super.key,
+  });
+
+  final ConnectivityState status;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      ConnectivityState.good => const Color(0xFF3CD56C),
+      ConnectivityState.warning => const Color(0xFFFFC247),
+      ConnectivityState.poor => const Color(0xFFFF5D59),
+    };
+
+    return Tooltip(
+      message: tooltip,
+      child: Icon(Icons.wifi_rounded, color: color, size: 20),
     );
   }
 }
