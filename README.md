@@ -27,7 +27,9 @@ If `SUPABASE_URL` and `SUPABASE_ANON_KEY` are missing, the app stays usable with
 
 ## Local config file
 
-For this workspace, you can also run with a local file that stays ignored by Git:
+For this workspace, plain `flutter run` now works too, because the app will try to load `env/supabase.local.json` at startup.
+
+You can still run with a local file explicitly:
 
 ```bash
 flutter run -d chrome --dart-define-from-file=env/supabase.local.json

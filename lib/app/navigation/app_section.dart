@@ -2,7 +2,7 @@ enum AppSection {
   dashboard,
   ticketing,
   staffAccess,
-  scanValidation,
+  qrScan,
   sales,
   reports,
   settings,

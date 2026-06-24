@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:waterpark/app/navigation/app_section.dart';
 import 'package:waterpark/core/theme/waterpark_brand.dart';
 import 'package:waterpark/features/dashboard/presentation/pages/dashboard_overview_page.dart';
+import 'package:waterpark/features/qr_scan/presentation/pages/qr_scan_page.dart';
 import 'package:waterpark/features/staff_access/presentation/pages/staff_access_page.dart';
 import 'package:waterpark/features/ticketing/presentation/pages/ticketing_overview_page.dart';
 import 'package:waterpark/shared/widgets/brand_surface.dart';
@@ -68,11 +69,7 @@ class DashboardSidebar extends StatelessWidget {
       (AppSection.dashboard, 'Dashboard', Icons.home_outlined),
       (AppSection.ticketing, 'Ticketing', Icons.confirmation_num_outlined),
       (AppSection.staffAccess, 'Staff Access', Icons.badge_outlined),
-      (
-        AppSection.scanValidation,
-        'Scan & Validation',
-        Icons.qr_code_scanner_rounded,
-      ),
+      (AppSection.qrScan, 'QR Scan', Icons.qr_code_scanner_rounded),
       (AppSection.sales, 'Sales', Icons.point_of_sale_outlined),
       (AppSection.reports, 'Reports', Icons.bar_chart_outlined),
       (AppSection.settings, 'Settings', Icons.settings_outlined),
@@ -266,6 +263,7 @@ class DashboardMainPanel extends StatelessWidget {
             AppSection.dashboard => const DashboardOverviewPage(),
             AppSection.ticketing => const TicketingOverviewPage(),
             AppSection.staffAccess => const StaffAccessPage(),
+            AppSection.qrScan => const QrScanPage(),
             _ => const SectionPlaceholder(),
           },
         ),
