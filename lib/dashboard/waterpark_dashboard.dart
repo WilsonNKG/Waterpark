@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:waterpark/core/app_section.dart';
 import 'package:waterpark/core/waterpark_brand.dart';
 import 'package:waterpark/dashboard/pages/dashboard_overview_page.dart';
+import 'package:waterpark/dashboard/pages/staff_access_page.dart';
 import 'package:waterpark/dashboard/pages/ticketing_overview_page.dart';
 import 'package:waterpark/dashboard/widgets/dashboard_common.dart';
 
@@ -65,6 +66,7 @@ class DashboardSidebar extends StatelessWidget {
     final items = [
       (AppSection.dashboard, 'Dashboard', Icons.home_outlined),
       (AppSection.ticketing, 'Ticketing', Icons.confirmation_num_outlined),
+      (AppSection.staffAccess, 'Staff Access', Icons.badge_outlined),
       (
         AppSection.scanValidation,
         'Scan & Validation',
@@ -262,6 +264,7 @@ class DashboardMainPanel extends StatelessWidget {
           child: switch (selected) {
             AppSection.dashboard => const DashboardOverviewPage(),
             AppSection.ticketing => const TicketingOverviewPage(),
+            AppSection.staffAccess => const StaffAccessPage(),
             _ => const SectionPlaceholder(),
           },
         ),
