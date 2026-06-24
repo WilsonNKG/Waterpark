@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:waterpark/core/waterpark_brand.dart';
-import 'package:waterpark/dashboard/waterpark_dashboard.dart';
+import 'package:waterpark/app/shell/waterpark_dashboard_shell.dart';
+import 'package:waterpark/core/theme/waterpark_brand.dart';
 
 class WaterparkApp extends StatelessWidget {
   const WaterparkApp({super.key});
@@ -26,7 +26,7 @@ class WaterparkApp extends StatelessWidget {
         colorScheme: scheme,
         scaffoldBackgroundColor: WaterparkBrand.background,
       ),
-      home: const WaterparkDashboard(),
+      home: const WaterparkDashboardShell(),
     );
   }
 }

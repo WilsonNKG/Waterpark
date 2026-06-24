@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:waterpark/core/waterpark_brand.dart';
-import 'package:waterpark/dashboard/widgets/dashboard_common.dart';
+import 'package:waterpark/core/theme/waterpark_brand.dart';
+import 'package:waterpark/shared/widgets/brand_surface.dart';
 
 class TicketingOverviewPage extends StatelessWidget {
   const TicketingOverviewPage({super.key});

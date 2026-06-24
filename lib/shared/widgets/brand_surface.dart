@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:waterpark/core/waterpark_brand.dart';
+import 'package:waterpark/core/theme/waterpark_brand.dart';
 
 class BrandSurface extends StatelessWidget {
   const BrandSurface({

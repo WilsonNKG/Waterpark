@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:waterpark/core/app_config.dart';
+import 'package:waterpark/core/config/app_config.dart';
 
 class SupabaseBootstrap {
   const SupabaseBootstrap._();

@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:waterpark/core/app_section.dart';
-import 'package:waterpark/core/waterpark_brand.dart';
-import 'package:waterpark/dashboard/pages/dashboard_overview_page.dart';
-import 'package:waterpark/dashboard/pages/staff_access_page.dart';
-import 'package:waterpark/dashboard/pages/ticketing_overview_page.dart';
-import 'package:waterpark/dashboard/widgets/dashboard_common.dart';
+import 'package:waterpark/app/navigation/app_section.dart';
+import 'package:waterpark/core/theme/waterpark_brand.dart';
+import 'package:waterpark/features/dashboard/presentation/pages/dashboard_overview_page.dart';
+import 'package:waterpark/features/staff_access/presentation/pages/staff_access_page.dart';
+import 'package:waterpark/features/ticketing/presentation/pages/ticketing_overview_page.dart';
+import 'package:waterpark/shared/widgets/brand_surface.dart';
 
 const kWaterparkLogoAsset = 'logo waterpark.png';
 
-class WaterparkDashboard extends StatefulWidget {
-  const WaterparkDashboard({super.key});
+class WaterparkDashboardShell extends StatefulWidget {
+  const WaterparkDashboardShell({super.key});
 
   @override
-  State<WaterparkDashboard> createState() => _WaterparkDashboardState();
+  State<WaterparkDashboardShell> createState() =>
+      _WaterparkDashboardShellState();
 }
 
-class _WaterparkDashboardState extends State<WaterparkDashboard> {
+class _WaterparkDashboardShellState extends State<WaterparkDashboardShell> {
   AppSection _selectedSection = AppSection.dashboard;
 
   @override

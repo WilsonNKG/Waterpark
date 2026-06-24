@@ -14,7 +14,7 @@ The `Staff Access` page now supports:
 ## Supabase setup
 
 1. Create a Supabase project.
-2. Open the SQL editor and run [supabase/staff_members.sql](/Users/wilsonmehaga/Documents/Programming%20Projects/NKG_APP/waterpark/supabase/staff_members.sql:1).
+2. Open the SQL editor and run [db/staff_members.sql](/Users/wilsonmehaga/Documents/Programming%20Projects/NKG_APP/waterpark/db/staff_members.sql:1).
 3. Run the app with your project values:
 
 ```bash

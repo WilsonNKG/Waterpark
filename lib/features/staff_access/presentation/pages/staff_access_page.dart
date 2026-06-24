@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:waterpark/core/app_config.dart';
-import 'package:waterpark/core/waterpark_brand.dart';
-import 'package:waterpark/dashboard/widgets/dashboard_common.dart';
-import 'package:waterpark/staff/staff_member.dart';
-import 'package:waterpark/staff/staff_repository.dart';
+import 'package:waterpark/core/config/app_config.dart';
+import 'package:waterpark/core/theme/waterpark_brand.dart';
+import 'package:waterpark/features/staff_access/data/staff_repository.dart';
+import 'package:waterpark/features/staff_access/domain/staff_member.dart';
+import 'package:waterpark/shared/widgets/brand_surface.dart';
 
 class StaffAccessPage extends StatefulWidget {
   const StaffAccessPage({super.key});
@@ -469,7 +469,7 @@ class SupabaseSetupNotice extends StatelessWidget {
           ),
           SizedBox(height: 10),
           Text(
-            'SQL file: supabase/staff_members.sql',
+            'SQL file: db/staff_members.sql',
             style: TextStyle(
               color: WaterparkBrand.primaryBlue,
               fontWeight: FontWeight.w700,
