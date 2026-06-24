@@ -497,11 +497,6 @@ class ScanResultCard extends StatelessWidget {
             ),
             ScanResultDetail(label: 'Name', value: result.staffMember!.name),
             ScanResultDetail(label: 'Role', value: result.staffMember!.role),
-            ScanResultDetail(
-              label: 'Category',
-              value: result.staffMember!.category.label,
-            ),
-            ScanResultDetail(label: 'Shift', value: result.staffMember!.shift),
           ],
           if (result.rawValue != null) ...[
             const SizedBox(height: 16),

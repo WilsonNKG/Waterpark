@@ -8,10 +8,6 @@ create table if not exists public.staff_members (
   staff_code text unique,
   name text not null,
   role text not null,
-  category text not null check (
-    category in ('management', 'operations', 'security', 'support', 'seasonal')
-  ),
-  shift text not null,
   qr_payload text,
   created_at timestamptz not null default timezone('utc', now())
 );

@@ -92,7 +92,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
             onDeleteStaff: _confirmDeleteStaff,
           ),
           const SizedBox(height: 16),
-          StaffCategoryBreakdown(members: _staffMembers),
+          StaffRoleBreakdown(members: _staffMembers),
         ],
       ],
     );
@@ -294,7 +294,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   }
 
   String _buildQrPayload(StaffMember member) {
-    return 'STAFF|${member.staffCode}|${member.name}|${member.category.key}|${member.shift}';
+    return 'STAFF|${member.staffCode}|${member.name}|${member.role}';
   }
 
   void _replaceMember(StaffMember updated) {
@@ -606,8 +606,6 @@ class StaffRosterCard extends StatelessWidget {
                         Expanded(flex: 2, child: StaffHeaderCell('Code')),
                         Expanded(flex: 2, child: StaffHeaderCell('Name')),
                         Expanded(flex: 2, child: StaffHeaderCell('Role')),
-                        Expanded(child: StaffHeaderCell('Category')),
-                        Expanded(child: StaffHeaderCell('Shift')),
                         Expanded(child: StaffHeaderCell('Status')),
                         Expanded(flex: 2, child: StaffHeaderCell('Actions')),
                       ],
@@ -688,14 +686,13 @@ class StaffRow extends StatelessWidget {
         children: [
           Expanded(flex: 2, child: StaffBodyCell(member.staffCode)),
           Expanded(flex: 2, child: StaffBodyCell(member.name)),
-          Expanded(flex: 2, child: StaffBodyCell(member.role)),
           Expanded(
+            flex: 2,
             child: Align(
               alignment: Alignment.centerLeft,
-              child: CategoryChip(category: member.category),
+              child: RoleChip(role: member.role),
             ),
           ),
-          Expanded(child: StaffBodyCell(member.shift)),
           Expanded(
             child: Align(
               alignment: Alignment.centerLeft,
@@ -770,19 +767,24 @@ class ActionChipButton extends StatelessWidget {
   }
 }
 
-class StaffCategoryBreakdown extends StatelessWidget {
-  const StaffCategoryBreakdown({required this.members, super.key});
+class StaffRoleBreakdown extends StatelessWidget {
+  const StaffRoleBreakdown({required this.members, super.key});
 
   final List<StaffMember> members;
 
   @override
   Widget build(BuildContext context) {
+    final knownRoles = {
+      ...kStaffRoleOptions,
+      ...members.map((member) => member.role),
+    }.toList()..sort();
+
     return BrandSurface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Category Breakdown',
+            'Role Breakdown',
             style: TextStyle(
               color: WaterparkBrand.deepBlue,
               fontSize: 20,
@@ -799,23 +801,27 @@ class StaffCategoryBreakdown extends StatelessWidget {
             spacing: 12,
             runSpacing: 12,
             children: [
-              for (final category in StaffCategory.values)
+              for (final role in knownRoles)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    color: category.color.withValues(alpha: 0.10),
+                    color: WaterparkBrand.lightBlue,
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(category.icon, color: category.color, size: 18),
+                      const Icon(
+                        Icons.badge_outlined,
+                        color: WaterparkBrand.primaryBlue,
+                        size: 18,
+                      ),
                       const SizedBox(width: 10),
                       Text(
-                        category.label,
+                        role,
                         style: const TextStyle(
                           color: WaterparkBrand.deepBlue,
                           fontWeight: FontWeight.w700,
@@ -823,9 +829,9 @@ class StaffCategoryBreakdown extends StatelessWidget {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        '${members.where((member) => member.category == category).length}',
-                        style: TextStyle(
-                          color: category.color,
+                        '${members.where((member) => member.role == role).length}',
+                        style: const TextStyle(
+                          color: WaterparkBrand.primaryBlue,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -850,15 +856,11 @@ class AddStaffDialog extends StatefulWidget {
 class _AddStaffDialogState extends State<AddStaffDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _roleController = TextEditingController();
-  final _shiftController = TextEditingController(text: 'Morning');
-  StaffCategory _selectedCategory = StaffCategory.operations;
+  String _selectedRole = kStaffRoleOptions.first;
 
   @override
   void dispose() {
     _nameController.dispose();
-    _roleController.dispose();
-    _shiftController.dispose();
     super.dispose();
   }
 
@@ -887,32 +889,16 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
                 },
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _roleController,
+              DropdownButtonFormField<String>(
+                initialValue: _selectedRole,
                 decoration: const InputDecoration(
                   labelText: 'Role',
                   border: OutlineInputBorder(),
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Enter the staff role';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<StaffCategory>(
-                initialValue: _selectedCategory,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  border: OutlineInputBorder(),
-                ),
-                items: StaffCategory.values
+                items: kStaffRoleOptions
                     .map(
-                      (category) => DropdownMenuItem(
-                        value: category,
-                        child: Text(category.label),
-                      ),
+                      (role) =>
+                          DropdownMenuItem(value: role, child: Text(role)),
                     )
                     .toList(),
                 onChanged: (value) {
@@ -920,22 +906,8 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
                     return;
                   }
                   setState(() {
-                    _selectedCategory = value;
+                    _selectedRole = value;
                   });
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _shiftController,
-                decoration: const InputDecoration(
-                  labelText: 'Shift',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Enter the shift';
-                  }
-                  return null;
                 },
               ),
             ],
@@ -955,9 +927,7 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
             Navigator.of(context).pop(
               StaffDraft(
                 name: _nameController.text.trim(),
-                role: _roleController.text.trim(),
-                category: _selectedCategory,
-                shift: _shiftController.text.trim(),
+                role: _selectedRole,
               ),
             );
           },
@@ -988,7 +958,7 @@ class StaffQrDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${member.staffCode} • ${member.category.label}',
+              '${member.staffCode} • ${member.role}',
               style: const TextStyle(
                 color: WaterparkBrand.gray,
                 fontSize: 13,
@@ -1080,23 +1050,23 @@ class StaffQrDialog extends StatelessWidget {
   }
 }
 
-class CategoryChip extends StatelessWidget {
-  const CategoryChip({required this.category, super.key});
+class RoleChip extends StatelessWidget {
+  const RoleChip({required this.role, super.key});
 
-  final StaffCategory category;
+  final String role;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: category.color.withValues(alpha: 0.12),
+        color: WaterparkBrand.lightBlue,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        category.label,
-        style: TextStyle(
-          color: category.color,
+        role,
+        style: const TextStyle(
+          color: WaterparkBrand.primaryBlue,
           fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
