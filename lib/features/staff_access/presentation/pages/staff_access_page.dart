@@ -14,7 +14,7 @@ class StaffAccessPage extends StatefulWidget {
 }
 
 class _StaffAccessPageState extends State<StaffAccessPage> {
-  late final StaffRepository _repository = StaffRepository.create();
+  StaffRepository? _repository;
   List<StaffMember> _staffMembers = const [];
   bool _isLoading = true;
   bool _isSaving = false;
@@ -23,6 +23,12 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   @override
   void initState() {
     super.initState();
+    try {
+      _repository = StaffRepository.create();
+    } catch (error) {
+      _errorMessage = '$error';
+      _isLoading = false;
+    }
     _loadStaff();
   }
 
@@ -43,7 +49,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
         Text(
           AppConfig.hasSupabase
               ? 'Your staff list is connected to Supabase. Add staff, open their QR, remove a QR only, or delete the full staff record.'
-              : 'Supabase is not connected yet, so this page is using local sample data. The database setup files are ready below.',
+              : 'Supabase is required for the staff module. If the database is not configured, this page stays empty and shows an error instead of sample data.',
           style: const TextStyle(
             color: WaterparkBrand.gray,
             fontSize: 14,
@@ -56,7 +62,9 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
           readyQr: _staffMembers.where((member) => member.hasQr).length,
           missingQr: _staffMembers.where((member) => !member.hasQr).length,
           isConnectedToSupabase: AppConfig.hasSupabase,
-          onAddStaff: _isSaving ? null : _handleAddStaff,
+          onAddStaff: AppConfig.hasSupabase && !_isSaving
+              ? _handleAddStaff
+              : null,
         ),
         if (!AppConfig.hasSupabase) ...[
           const SizedBox(height: 16),
@@ -91,13 +99,20 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   }
 
   Future<void> _loadStaff() async {
+    if (_repository == null) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final staff = await _repository.fetchStaff();
+      final staff = await _repository!.fetchStaff();
       if (!mounted) {
         return;
       }
@@ -132,7 +147,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
     });
 
     try {
-      final created = await _repository.createStaff(draft);
+      final created = await _repository!.createStaff(draft);
       if (!mounted) {
         return;
       }
@@ -187,7 +202,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
     });
 
     try {
-      await _repository.deleteStaff(member.id);
+      await _repository!.deleteStaff(member.id);
       if (!mounted) {
         return;
       }
@@ -215,7 +230,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
     });
 
     try {
-      final updated = await _repository.deleteQr(member.id);
+      final updated = await _repository!.deleteQr(member.id);
       if (!mounted) {
         return;
       }
@@ -252,7 +267,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
 
       try {
         final payload = _buildQrPayload(member);
-        final updated = await _repository.saveQr(member.id, payload);
+        final updated = await _repository!.saveQr(member.id, payload);
         if (!mounted) {
           return;
         }
@@ -337,10 +352,10 @@ class StaffTopBar extends StatelessWidget {
                         ),
                         SummaryPill(
                           label: 'Database',
-                          value: isConnectedToSupabase ? 'Supabase' : 'Local',
+                          value: isConnectedToSupabase ? 'Supabase' : 'Missing',
                           color: isConnectedToSupabase
                               ? WaterparkBrand.aqua
-                              : WaterparkBrand.gray,
+                              : WaterparkBrand.accentRed,
                         ),
                       ],
                     ),
@@ -376,10 +391,12 @@ class StaffTopBar extends StatelessWidget {
                           ),
                           SummaryPill(
                             label: 'Database',
-                            value: isConnectedToSupabase ? 'Supabase' : 'Local',
+                            value: isConnectedToSupabase
+                                ? 'Supabase'
+                                : 'Missing',
                             color: isConnectedToSupabase
                                 ? WaterparkBrand.aqua
-                                : WaterparkBrand.gray,
+                                : WaterparkBrand.accentRed,
                           ),
                         ],
                       ),
@@ -464,7 +481,7 @@ class SupabaseSetupNotice extends StatelessWidget {
           ),
           SizedBox(height: 8),
           Text(
-            'This app is ready for Supabase, but you still need to create the table and run the app with SUPABASE_URL and SUPABASE_ANON_KEY.',
+            'This staff module only works with Supabase now. Start the app with SUPABASE_URL and SUPABASE_ANON_KEY so the roster can load from the database.',
             style: TextStyle(color: WaterparkBrand.gray, height: 1.45),
           ),
           SizedBox(height: 10),
