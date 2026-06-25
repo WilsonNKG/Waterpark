@@ -16,6 +16,7 @@ class StaffAccessPage extends StatefulWidget {
 class _StaffAccessPageState extends State<StaffAccessPage> {
   StaffRepository? _repository;
   List<StaffMember> _staffMembers = const [];
+  List<String> _roleOptions = buildStaffRoleOptions(const []);
   bool _isLoading = true;
   bool _isSaving = false;
   String? _errorMessage;
@@ -92,7 +93,10 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
             onDeleteStaff: _confirmDeleteStaff,
           ),
           const SizedBox(height: 16),
-          StaffRoleBreakdown(members: _staffMembers),
+          StaffRoleBreakdown(
+            members: _staffMembers,
+            availableRoles: _roleOptions,
+          ),
         ],
       ],
     );
@@ -112,12 +116,17 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
     });
 
     try {
+      final roles = await _repository!.fetchRoles();
       final staff = await _repository!.fetchStaff();
       if (!mounted) {
         return;
       }
       setState(() {
         _staffMembers = staff;
+        _roleOptions = buildStaffRoleOptions([
+          ...roles,
+          ...staff.map((member) => member.role),
+        ]);
         _isLoading = false;
       });
     } catch (error) {
@@ -134,7 +143,12 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   Future<void> _handleAddStaff() async {
     final draft = await showDialog<StaffDraft>(
       context: context,
-      builder: (context) => const AddStaffDialog(),
+      builder: (context) => AddStaffDialog(
+        availableRoles: _roleOptions,
+        lockedRoles: _staffMembers.map((member) => member.role).toSet(),
+        onCreateRole: _createRole,
+        onDeleteRole: _deleteRoleOption,
+      ),
     );
 
     if (draft == null) {
@@ -153,6 +167,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
       }
       setState(() {
         _staffMembers = [..._staffMembers, created];
+        _roleOptions = buildStaffRoleOptions([..._roleOptions, created.role]);
         _isSaving = false;
       });
     } catch (error) {
@@ -221,6 +236,30 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
         _errorMessage = 'Could not delete staff. $error';
       });
     }
+  }
+
+  Future<String> _createRole(String role) async {
+    final createdRole = await _repository!.createRole(role);
+    if (!mounted) {
+      return createdRole;
+    }
+
+    setState(() {
+      _roleOptions = buildStaffRoleOptions([..._roleOptions, createdRole]);
+    });
+
+    return createdRole;
+  }
+
+  Future<void> _deleteRoleOption(String role) async {
+    await _repository!.deleteRole(role);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _roleOptions = _roleOptions.where((entry) => entry != role).toList();
+    });
   }
 
   Future<void> _deleteQr(StaffMember member) async {
@@ -768,16 +807,21 @@ class ActionChipButton extends StatelessWidget {
 }
 
 class StaffRoleBreakdown extends StatelessWidget {
-  const StaffRoleBreakdown({required this.members, super.key});
+  const StaffRoleBreakdown({
+    required this.members,
+    required this.availableRoles,
+    super.key,
+  });
 
   final List<StaffMember> members;
+  final List<String> availableRoles;
 
   @override
   Widget build(BuildContext context) {
-    final knownRoles = {
-      ...kStaffRoleOptions,
+    final knownRoles = buildStaffRoleOptions([
+      ...availableRoles,
       ...members.map((member) => member.role),
-    }.toList()..sort();
+    ]);
 
     return BrandSurface(
       child: Column(
@@ -847,7 +891,18 @@ class StaffRoleBreakdown extends StatelessWidget {
 }
 
 class AddStaffDialog extends StatefulWidget {
-  const AddStaffDialog({super.key});
+  const AddStaffDialog({
+    required this.availableRoles,
+    required this.lockedRoles,
+    required this.onCreateRole,
+    required this.onDeleteRole,
+    super.key,
+  });
+
+  final List<String> availableRoles;
+  final Set<String> lockedRoles;
+  final Future<String> Function(String role) onCreateRole;
+  final Future<void> Function(String role) onDeleteRole;
 
   @override
   State<AddStaffDialog> createState() => _AddStaffDialogState();
@@ -856,11 +911,24 @@ class AddStaffDialog extends StatefulWidget {
 class _AddStaffDialogState extends State<AddStaffDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  String _selectedRole = kStaffRoleOptions.first;
+  final _newRoleController = TextEditingController();
+  late List<String> _roles;
+  late String _selectedRole;
+  bool _isManagingRoles = false;
+  bool _isUpdatingRoles = false;
+  String? _roleErrorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _roles = buildStaffRoleOptions(widget.availableRoles);
+    _selectedRole = _roles.first;
+  }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _newRoleController.dispose();
     super.dispose();
   }
 
@@ -869,48 +937,209 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
     return AlertDialog(
       title: const Text('Add Staff'),
       content: SizedBox(
-        width: 420,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full name',
-                  border: OutlineInputBorder(),
+        width: 440,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Full name',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Enter the staff name';
+                    }
+                    return null;
+                  },
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Enter the staff name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedRole,
-                decoration: const InputDecoration(
-                  labelText: 'Role',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: WaterparkBrand.lightBlue,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFD7EAFE)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            'Role',
+                            style: TextStyle(
+                              color: WaterparkBrand.deepBlue,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: _isUpdatingRoles
+                                ? null
+                                : () {
+                              setState(() {
+                                _isManagingRoles = !_isManagingRoles;
+                              });
+                            },
+                            icon: Icon(
+                              _isManagingRoles
+                                  ? Icons.tune_rounded
+                                  : Icons.edit_rounded,
+                              size: 18,
+                            ),
+                            label: Text(
+                              _isManagingRoles ? 'Done' : 'Manage roles',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Selected: $_selectedRole',
+                        style: const TextStyle(
+                          color: WaterparkBrand.primaryBlue,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final role in _roles)
+                            ChoiceChip(
+                              label: Text(role),
+                              selected: role == _selectedRole,
+                              onSelected: (_) {
+                                setState(() {
+                                  _selectedRole = role;
+                                });
+                              },
+                              selectedColor: WaterparkBrand.primaryBlue
+                                  .withValues(alpha: 0.15),
+                              labelStyle: TextStyle(
+                                color: role == _selectedRole
+                                    ? WaterparkBrand.primaryBlue
+                                    : WaterparkBrand.deepBlue,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              side: BorderSide(
+                                color: role == _selectedRole
+                                    ? WaterparkBrand.primaryBlue
+                                    : const Color(0xFFD7EAFE),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                items: kStaffRoleOptions
-                    .map(
-                      (role) =>
-                          DropdownMenuItem(value: role, child: Text(role)),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value == null) {
-                    return;
-                  }
-                  setState(() {
-                    _selectedRole = value;
-                  });
-                },
-              ),
-            ],
+                if (_isManagingRoles) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE3EEF8)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Manage Roles',
+                          style: TextStyle(
+                            color: WaterparkBrand.deepBlue,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Add a new role or remove one that is not being used yet.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: WaterparkBrand.gray,
+                                height: 1.4,
+                              ),
+                        ),
+                        if (_roleErrorMessage != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            _roleErrorMessage!,
+                            style: const TextStyle(
+                              color: WaterparkBrand.accentRed,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _newRoleController,
+                                enabled: !_isUpdatingRoles,
+                                decoration: const InputDecoration(
+                                  labelText: 'New role',
+                                  border: OutlineInputBorder(),
+                                ),
+                                onFieldSubmitted: (_) => _handleAddRole(),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            FilledButton.icon(
+                              onPressed: _isUpdatingRoles
+                                  ? null
+                                  : _handleAddRole,
+                              icon: const Icon(Icons.add_rounded),
+                              label: Text(_isUpdatingRoles ? 'Saving' : 'Add'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final role in _roles)
+                              InputChip(
+                                label: Text(role),
+                                avatar: widget.lockedRoles.contains(role)
+                                    ? const Icon(
+                                        Icons.lock_rounded,
+                                        size: 16,
+                                        color: WaterparkBrand.gray,
+                                      )
+                                    : null,
+                                onPressed: () {
+                                  setState(() {
+                                    _selectedRole = role;
+                                  });
+                                },
+                                onDeleted:
+                                    _isUpdatingRoles || !_canDeleteRole(role)
+                                    ? null
+                                    : () => _handleDeleteRole(role),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -920,7 +1149,9 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () {
+          onPressed: _isUpdatingRoles
+              ? null
+              : () {
             if (!_formKey.currentState!.validate()) {
               return;
             }
@@ -935,6 +1166,94 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
         ),
       ],
     );
+  }
+
+  Future<void> _handleAddRole() async {
+    final role = _newRoleController.text.trim();
+    if (role.isEmpty) {
+      return;
+    }
+
+    final exists = _roles.any(
+      (existingRole) => existingRole.toLowerCase() == role.toLowerCase(),
+    );
+
+    if (exists) {
+      setState(() {
+        _roleErrorMessage = null;
+        _selectedRole = _roles.firstWhere(
+          (existingRole) => existingRole.toLowerCase() == role.toLowerCase(),
+        );
+      });
+      _newRoleController.clear();
+      return;
+    }
+
+    setState(() {
+      _isUpdatingRoles = true;
+      _roleErrorMessage = null;
+    });
+
+    try {
+      final createdRole = await widget.onCreateRole(role);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _roles = buildStaffRoleOptions([..._roles, createdRole]);
+        _selectedRole = createdRole;
+        _newRoleController.clear();
+        _isUpdatingRoles = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isUpdatingRoles = false;
+        _roleErrorMessage = 'Could not save role. $error';
+      });
+    }
+  }
+
+  bool _canDeleteRole(String role) {
+    return _roles.length > 1 &&
+        !widget.lockedRoles.contains(role) &&
+        role != _selectedRole;
+  }
+
+  Future<void> _handleDeleteRole(String role) async {
+    if (!_canDeleteRole(role)) {
+      return;
+    }
+
+    setState(() {
+      _isUpdatingRoles = true;
+      _roleErrorMessage = null;
+    });
+
+    try {
+      await widget.onDeleteRole(role);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _roles = _roles.where((entry) => entry != role).toList();
+        _isUpdatingRoles = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isUpdatingRoles = false;
+        _roleErrorMessage = 'Could not delete role. $error';
+      });
+    }
   }
 }
 

@@ -1,13 +1,17 @@
-const kStaffRoleOptions = <String>[
-  'Manager',
-  'Admin',
-  'Cashier',
-  'Lifeguard',
-  'Security',
-  'Cleaning Crew',
-  'Maintenance',
-  'Weekend Crew',
-];
+List<String> buildStaffRoleOptions(Iterable<String> roles) {
+  final uniqueRoles = <String>{};
+
+  for (final role in roles) {
+    final normalized = role.trim();
+    if (normalized.isEmpty) {
+      continue;
+    }
+    uniqueRoles.add(normalized);
+  }
+
+  final sortedRoles = uniqueRoles.toList()..sort();
+  return sortedRoles;
+}
 
 class StaffMember {
   const StaffMember({
