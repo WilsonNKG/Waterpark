@@ -13,10 +13,15 @@ class StaffAccessPage extends StatefulWidget {
   State<StaffAccessPage> createState() => _StaffAccessPageState();
 }
 
+enum StaffRosterFilter { all, official, canteen, stand }
+
 class _StaffAccessPageState extends State<StaffAccessPage> {
   StaffRepository? _repository;
   List<StaffMember> _staffMembers = const [];
   List<String> _roleOptions = buildStaffRoleOptions(const []);
+  StaffRosterFilter _activeFilter = StaffRosterFilter.all;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   bool _isLoading = true;
   bool _isSaving = false;
   String? _errorMessage;
@@ -34,72 +39,205 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Staff Access',
-          style: TextStyle(
-            color: WaterparkBrand.deepBlue,
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          AppConfig.hasSupabase
-              ? 'Your staff list is connected to Supabase. Add staff, open their QR, remove a QR only, or delete the full staff record.'
-              : 'Supabase is required for the staff module. If the database is not configured, this page stays empty and shows an error instead of sample data.',
-          style: const TextStyle(
-            color: WaterparkBrand.gray,
-            fontSize: 14,
-            height: 1.5,
-          ),
-        ),
-        const SizedBox(height: 16),
-        StaffTopBar(
-          total: _staffMembers.length,
-          readyQr: _staffMembers.where((member) => member.hasQr).length,
-          missingQr: _staffMembers.where((member) => !member.hasQr).length,
-          isConnectedToSupabase: AppConfig.hasSupabase,
-          onAddStaff: AppConfig.hasSupabase && !_isSaving
-              ? _handleAddStaff
-              : null,
-        ),
-        if (!AppConfig.hasSupabase) ...[
-          const SizedBox(height: 16),
-          const SupabaseSetupNotice(),
-        ],
-        const SizedBox(height: 16),
-        if (_errorMessage != null) ...[
-          ErrorBanner(message: _errorMessage!, onRetry: _loadStaff),
-          const SizedBox(height: 16),
-        ],
-        if (_isLoading)
-          const BrandSurface(
-            child: Padding(
-              padding: EdgeInsets.all(12),
-              child: Center(child: CircularProgressIndicator()),
+    final visibleMembers = _buildVisibleMembers();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactHeight = constraints.maxHeight < 860;
+        final compactWidth = constraints.maxWidth < 1500;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Staff Access',
+              style: TextStyle(
+                color: WaterparkBrand.deepBlue,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          )
-        else ...[
-          StaffRosterCard(
-            members: _staffMembers,
-            isSaving: _isSaving,
-            onAddStaff: _handleAddStaff,
-            onOpenQr: _showQrDialog,
-            onDeleteQr: _deleteQr,
-            onDeleteStaff: _confirmDeleteStaff,
-          ),
-          const SizedBox(height: 16),
-          StaffRoleBreakdown(
-            members: _staffMembers,
-            availableRoles: _roleOptions,
-          ),
-        ],
-      ],
+            const SizedBox(height: 8),
+            Text(
+              AppConfig.hasSupabase
+                  ? 'Your staff list is connected to Supabase. Add staff, open their QR, remove a QR only, or delete the full staff record.'
+                  : 'Supabase is required for the staff module. If the database is not configured, this page stays empty and shows an error instead of sample data.',
+              style: const TextStyle(
+                color: WaterparkBrand.gray,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            SizedBox(height: compactHeight ? 10 : 12),
+            StaffTopBar(
+              total: _staffMembers.length,
+              readyQr: _staffMembers.where((member) => member.hasQr).length,
+              missingQr: _staffMembers.where((member) => !member.hasQr).length,
+              isConnectedToSupabase: AppConfig.hasSupabase,
+              onAddStaff: AppConfig.hasSupabase && !_isSaving
+                  ? _handleAddStaff
+                  : null,
+            ),
+            if (!AppConfig.hasSupabase) ...[
+              SizedBox(height: compactHeight ? 10 : 12),
+              const SupabaseSetupNotice(),
+            ],
+            SizedBox(height: compactHeight ? 10 : 12),
+            if (_errorMessage != null) ...[
+              ErrorBanner(message: _errorMessage!, onRetry: _loadStaff),
+              SizedBox(height: compactHeight ? 10 : 12),
+            ],
+            Expanded(
+              child: _isLoading
+                  ? const BrandSurface(
+                      child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    )
+                  : compactWidth || compactHeight
+                      ? Column(
+                          children: [
+                            Expanded(
+                              child: StaffRosterCard(
+                                members: visibleMembers,
+                                allMembers: _staffMembers,
+                                isSaving: _isSaving,
+                                activeFilter: _activeFilter,
+                                searchController: _searchController,
+                                onFilterChanged: (filter) {
+                                  setState(() {
+                                    _activeFilter = filter;
+                                  });
+                                },
+                                onSearchChanged: (value) {
+                                  setState(() {
+                                    _searchQuery = value;
+                                  });
+                                },
+                                onAddStaff: _handleAddStaff,
+                                onOpenQr: _showQrDialog,
+                                onDeleteQr: _deleteQr,
+                                onDeleteStaff: _confirmDeleteStaff,
+                              ),
+                            ),
+                            SizedBox(height: compactHeight ? 8 : 10),
+                            StaffRoleBreakdown(
+                              members: _staffMembers,
+                              availableRoles: _roleOptions,
+                              initiallyExpanded: false,
+                            ),
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: StaffRosterCard(
+                                members: visibleMembers,
+                                allMembers: _staffMembers,
+                                isSaving: _isSaving,
+                                activeFilter: _activeFilter,
+                                searchController: _searchController,
+                                onFilterChanged: (filter) {
+                                  setState(() {
+                                    _activeFilter = filter;
+                                  });
+                                },
+                                onSearchChanged: (value) {
+                                  setState(() {
+                                    _searchQuery = value;
+                                  });
+                                },
+                                onAddStaff: _handleAddStaff,
+                                onOpenQr: _showQrDialog,
+                                onDeleteQr: _deleteQr,
+                                onDeleteStaff: _confirmDeleteStaff,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            SizedBox(
+                              width: 320,
+                              child: StaffRoleBreakdown(
+                                members: _staffMembers,
+                                availableRoles: _roleOptions,
+                                initiallyExpanded: true,
+                              ),
+                            ),
+                          ],
+                        ),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  List<StaffMember> _buildVisibleMembers() {
+    final members = [..._staffMembers];
+    members.sort(_compareStaffMembers);
+
+    return switch (_activeFilter) {
+      StaffRosterFilter.all => members,
+      StaffRosterFilter.official => members
+          .where((member) => member.staffType == StaffType.officialStaff)
+          .toList(),
+      StaffRosterFilter.canteen => members
+          .where((member) => member.staffType == StaffType.canteenTenant)
+          .toList(),
+      StaffRosterFilter.stand => members
+          .where((member) => member.staffType == StaffType.standTenant)
+          .toList(),
+    }.where(_matchesSearch).toList();
+  }
+
+  bool _matchesSearch(StaffMember member) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) {
+      return true;
+    }
+
+    final content = [
+      member.staffCode,
+      member.name,
+      member.groupLabel,
+      member.assignmentLabel,
+      member.role,
+      member.shortDescriptor,
+      if (member.unitNumber != null) member.unitNumber.toString(),
+    ].join(' ').toLowerCase();
+
+    return content.contains(query);
+  }
+
+  int _compareStaffMembers(StaffMember a, StaffMember b) {
+    final typeOrder = _sortOrderForType(a.staffType)
+        .compareTo(_sortOrderForType(b.staffType));
+    if (typeOrder != 0) {
+      return typeOrder;
+    }
+
+    final unitOrder = (a.unitNumber ?? 0).compareTo(b.unitNumber ?? 0);
+    if (unitOrder != 0) {
+      return unitOrder;
+    }
+
+    return a.staffCode.compareTo(b.staffCode);
+  }
+
+  int _sortOrderForType(StaffType type) {
+    return switch (type) {
+      StaffType.canteenTenant => 0,
+      StaffType.standTenant => 1,
+      StaffType.officialStaff => 2,
+    };
   }
 
   Future<void> _loadStaff() async {
@@ -145,7 +283,10 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
       context: context,
       builder: (context) => AddStaffDialog(
         availableRoles: _roleOptions,
-        lockedRoles: _staffMembers.map((member) => member.role).toSet(),
+        lockedRoles: _staffMembers
+            .where((member) => member.staffType == StaffType.officialStaff)
+            .map((member) => member.role)
+            .toSet(),
         onCreateRole: _createRole,
         onDeleteRole: _deleteRoleOption,
       ),
@@ -333,7 +474,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   }
 
   String _buildQrPayload(StaffMember member) {
-    return 'STAFF|${member.staffCode}|${member.name}|${member.role}';
+    return 'STAFF|${member.staffCode}|${member.name}|${member.staffType.dbValue}|${member.role}|${member.qrUnitValue}';
   }
 
   void _replaceMember(StaffMember updated) {
@@ -364,7 +505,7 @@ class StaffTopBar extends StatelessWidget {
     return BrandSurface(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 900;
+          final compact = constraints.maxWidth < 1280;
 
           return compact
               ? Column(
@@ -573,7 +714,12 @@ class ErrorBanner extends StatelessWidget {
 class StaffRosterCard extends StatelessWidget {
   const StaffRosterCard({
     required this.members,
+    required this.allMembers,
     required this.isSaving,
+    required this.activeFilter,
+    required this.searchController,
+    required this.onFilterChanged,
+    required this.onSearchChanged,
     required this.onAddStaff,
     required this.onOpenQr,
     required this.onDeleteQr,
@@ -582,7 +728,12 @@ class StaffRosterCard extends StatelessWidget {
   });
 
   final List<StaffMember> members;
+  final List<StaffMember> allMembers;
   final bool isSaving;
+  final StaffRosterFilter activeFilter;
+  final TextEditingController searchController;
+  final ValueChanged<StaffRosterFilter> onFilterChanged;
+  final ValueChanged<String> onSearchChanged;
   final VoidCallback onAddStaff;
   final ValueChanged<StaffMember> onOpenQr;
   final ValueChanged<StaffMember> onDeleteQr;
@@ -590,97 +741,281 @@ class StaffRosterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final officialCount = allMembers
+        .where((member) => member.staffType == StaffType.officialStaff)
+        .length;
+    final canteenCount = allMembers
+        .where((member) => member.staffType == StaffType.canteenTenant)
+        .length;
+    final standCount = allMembers
+        .where((member) => member.staffType == StaffType.standTenant)
+        .length;
+
     return BrandSurface(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Staff Roster',
-                      style: TextStyle(
-                        color: WaterparkBrand.deepBlue,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compactWidth = constraints.maxWidth < 1500;
+          final compactHeight = constraints.maxHeight < 560;
+          final contentWidth = compactWidth
+              ? constraints.maxWidth
+              : constraints.maxWidth > 1540
+                  ? constraints.maxWidth
+                  : 1540.0;
+
+          return SizedBox.expand(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (compactWidth) ...[
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Staff Roster',
+                        style: TextStyle(
+                          color: WaterparkBrand.deepBlue,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Browse everyone by category, then open QR, delete only the QR, or remove the full staff record.',
+                        style: TextStyle(
+                          color: WaterparkBrand.gray,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: isSaving ? null : onAddStaff,
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('New Staff'),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Staff Roster',
+                              style: TextStyle(
+                                color: WaterparkBrand.deepBlue,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Browse everyone by category, then open QR, delete only the QR, or remove the full staff record.',
+                              style: TextStyle(
+                                color: WaterparkBrand.gray,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: isSaving ? null : onAddStaff,
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('New Staff'),
+                      ),
+                    ],
+                  ),
+                ],
+                SizedBox(height: compactHeight ? 10 : 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: compactHeight ? 8 : 10,
+                  children: [
+                    _RosterFilterChip(
+                      label: 'All',
+                      count: allMembers.length,
+                      selected: activeFilter == StaffRosterFilter.all,
+                      onTap: () => onFilterChanged(StaffRosterFilter.all),
                     ),
-                    SizedBox(height: 8),
-                    Text(
-                      'The main actions are here: add staff, view QR, delete QR only, or delete the staff record.',
-                      style: TextStyle(color: WaterparkBrand.gray, height: 1.4),
+                    _RosterFilterChip(
+                      label: 'Canteen',
+                      count: canteenCount,
+                      selected: activeFilter == StaffRosterFilter.canteen,
+                      onTap: () => onFilterChanged(StaffRosterFilter.canteen),
+                    ),
+                    _RosterFilterChip(
+                      label: 'Stand',
+                      count: standCount,
+                      selected: activeFilter == StaffRosterFilter.stand,
+                      onTap: () => onFilterChanged(StaffRosterFilter.stand),
+                    ),
+                    _RosterFilterChip(
+                      label: 'Official',
+                      count: officialCount,
+                      selected: activeFilter == StaffRosterFilter.official,
+                      onTap: () => onFilterChanged(StaffRosterFilter.official),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: isSaving ? null : onAddStaff,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('New Staff'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: 1120,
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF4FAFF),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Row(
-                      children: [
-                        Expanded(flex: 2, child: StaffHeaderCell('Code')),
-                        Expanded(flex: 2, child: StaffHeaderCell('Name')),
-                        Expanded(flex: 2, child: StaffHeaderCell('Role')),
-                        Expanded(child: StaffHeaderCell('Status')),
-                        Expanded(flex: 2, child: StaffHeaderCell('Actions')),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  if (members.isEmpty)
-                    const EmptyRosterCard()
-                  else
-                    for (final member in members) ...[
-                      StaffRow(
-                        member: member,
-                        isSaving: isSaving,
-                        onOpenQr: () => onOpenQr(member),
-                        onDeleteQr: member.hasQr
-                            ? () => onDeleteQr(member)
-                            : null,
-                        onDeleteStaff: () => onDeleteStaff(member),
+                SizedBox(height: compactHeight ? 8 : 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        onChanged: onSearchChanged,
+                        decoration: InputDecoration(
+                          hintText:
+                              'Search code, name, category, assignment, or role',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FBFF),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFDCEAF7),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFDCEAF7),
+                            ),
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 10),
+                    ),
+                    if (searchController.text.trim().isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      TextButton.icon(
+                        onPressed: () {
+                          searchController.clear();
+                          onSearchChanged('');
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                        label: const Text('Clear'),
+                      ),
                     ],
-                ],
-              ),
+                  ],
+                ),
+                SizedBox(height: compactHeight ? 4 : 6),
+                Text(
+                  '${members.length} staff shown',
+                  style: const TextStyle(
+                    color: WaterparkBrand.gray,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: compactHeight ? 8 : 10),
+                Expanded(
+                  child: Column(
+                    children: [
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: contentWidth,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [Color(0xFFF4FAFF), Color(0xFFEAF6FF)],
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Row(
+                              children: [
+                                Expanded(flex: 2, child: StaffHeaderCell('Code')),
+                                Expanded(flex: 2, child: StaffHeaderCell('Name')),
+                                Expanded(flex: 2, child: StaffHeaderCell('Group')),
+                                Expanded(
+                                  flex: 2,
+                                  child: StaffHeaderCell('Assignment'),
+                                ),
+                                Expanded(child: StaffHeaderCell('Status')),
+                                Expanded(
+                                  flex: 2,
+                                  child: StaffHeaderCell('Actions'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: compactHeight ? 4 : 6),
+                      Expanded(
+                        child: members.isEmpty
+                            ? EmptyRosterCard(filter: activeFilter)
+                            : Scrollbar(
+                                thumbVisibility: true,
+                                child: ListView.separated(
+                                  itemCount: members.length,
+                                  separatorBuilder: (_, _) =>
+                                      const SizedBox(height: 6),
+                                  itemBuilder: (context, index) {
+                                    final member = members[index];
+                                    return SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: SizedBox(
+                                        width: contentWidth,
+                                        child: StaffRow(
+                                          member: member,
+                                          isSaving: isSaving,
+                                          onOpenQr: () => onOpenQr(member),
+                                          onDeleteQr: member.hasQr
+                                              ? () => onDeleteQr(member)
+                                              : null,
+                                          onDeleteStaff: () =>
+                                              onDeleteStaff(member),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
 class EmptyRosterCard extends StatelessWidget {
-  const EmptyRosterCard({super.key});
+  const EmptyRosterCard({required this.filter, super.key});
+
+  final StaffRosterFilter filter;
 
   @override
   Widget build(BuildContext context) {
+    final message = switch (filter) {
+      StaffRosterFilter.all =>
+        'No staff yet. Add your first staff member to begin assigning access.',
+      StaffRosterFilter.canteen =>
+        'No canteen tenants yet. Add one to link them to a canteen number.',
+      StaffRosterFilter.stand =>
+        'No stand tenants yet. Add one to link them to a stand number.',
+      StaffRosterFilter.official =>
+        'No official staff yet. Add internal staff roles to start managing access.',
+    };
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(22),
@@ -688,9 +1023,9 @@ class EmptyRosterCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE3EEF8)),
       ),
-      child: const Text(
-        'No staff yet. Add your first staff member to begin assigning access.',
-        style: TextStyle(color: WaterparkBrand.gray, fontSize: 14),
+      child: Text(
+        message,
+        style: const TextStyle(color: WaterparkBrand.gray, fontSize: 14),
       ),
     );
   }
@@ -715,21 +1050,60 @@ class StaffRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE3EEF8)),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFDDEBF8)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A002B45),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Expanded(flex: 2, child: StaffBodyCell(member.staffCode)),
-          Expanded(flex: 2, child: StaffBodyCell(member.name)),
+          Expanded(
+            flex: 2,
+            child: StaffBodyCell(
+              member.staffCode,
+              emphasis: true,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                StaffBodyCell(member.name, emphasis: true),
+                const SizedBox(height: 4),
+                Text(
+                  member.shortDescriptor,
+                  style: const TextStyle(
+                    color: WaterparkBrand.gray,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
           Expanded(
             flex: 2,
             child: Align(
               alignment: Alignment.centerLeft,
-              child: RoleChip(role: member.role),
+              child: TypeChip(label: member.groupLabel),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: RoleChip(role: member.assignmentLabel),
             ),
           ),
           Expanded(
@@ -786,12 +1160,17 @@ class ActionChipButton extends StatelessWidget {
       onTap: onPressed,
       borderRadius: BorderRadius.circular(999),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
           color: onPressed == null
               ? const Color(0xFFF3F5F8)
               : color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: onPressed == null
+                ? const Color(0xFFE3EAF1)
+                : color.withValues(alpha: 0.15),
+          ),
         ),
         child: Text(
           label,
@@ -810,81 +1189,91 @@ class StaffRoleBreakdown extends StatelessWidget {
   const StaffRoleBreakdown({
     required this.members,
     required this.availableRoles,
+    this.initiallyExpanded = true,
     super.key,
   });
 
   final List<StaffMember> members;
   final List<String> availableRoles;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
-    final knownRoles = buildStaffRoleOptions([
-      ...availableRoles,
-      ...members.map((member) => member.role),
-    ]);
+    final officialCount = members
+        .where((member) => member.staffType == StaffType.officialStaff)
+        .length;
+    final canteenCount = members
+        .where((member) => member.staffType == StaffType.canteenTenant)
+        .length;
+    final standCount = members
+        .where((member) => member.staffType == StaffType.standTenant)
+        .length;
+    final officialRoles = buildOfficialRoleOptions(availableRoles);
 
     return BrandSurface(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Role Breakdown',
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 8),
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          title: const Text(
+            'Staff Structure',
             style: TextStyle(
               color: WaterparkBrand.deepBlue,
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Compact totals so the table stays the main focus.',
-            style: TextStyle(color: WaterparkBrand.gray, height: 1.4),
+          subtitle: const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'Open if you want to review category and role totals.',
+              style: TextStyle(
+                color: WaterparkBrand.gray,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
           ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              for (final role in knownRoles)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: WaterparkBrand.lightBlue,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.badge_outlined,
-                        color: WaterparkBrand.primaryBlue,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        role,
-                        style: const TextStyle(
-                          color: WaterparkBrand.deepBlue,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        '${members.where((member) => member.role == role).length}',
-                        style: const TextStyle(
-                          color: WaterparkBrand.primaryBlue,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
+          children: [
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _BreakdownChip(label: 'Official Staff', count: officialCount),
+                _BreakdownChip(label: 'Canteen Tenant', count: canteenCount),
+                _BreakdownChip(label: 'Stand Tenant', count: standCount),
+              ],
+            ),
+            if (officialRoles.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              const Text(
+                'Official Roles',
+                style: TextStyle(
+                  color: WaterparkBrand.deepBlue,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
                 ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final role in officialRoles)
+                    _BreakdownChip(
+                      label: role,
+                      count: members.where((member) => member.role == role).length,
+                    ),
+                ],
+              ),
             ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -912,8 +1301,10 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _newRoleController = TextEditingController();
-  late List<String> _roles;
+  final _unitNumberController = TextEditingController();
+  late List<String> _officialRoles;
   late String _selectedRole;
+  StaffType _selectedType = StaffType.officialStaff;
   bool _isManagingRoles = false;
   bool _isUpdatingRoles = false;
   String? _roleErrorMessage;
@@ -921,14 +1312,15 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
   @override
   void initState() {
     super.initState();
-    _roles = buildStaffRoleOptions(widget.availableRoles);
-    _selectedRole = _roles.first;
+    _officialRoles = buildOfficialRoleOptions(widget.availableRoles);
+    _selectedRole = _officialRoles.isEmpty ? 'Manager' : _officialRoles.first;
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _newRoleController.dispose();
+    _unitNumberController.dispose();
     super.dispose();
   }
 
@@ -959,6 +1351,48 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
                   },
                 ),
                 const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FBFF),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE3EEF8)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Staff Group',
+                        style: TextStyle(
+                          color: WaterparkBrand.deepBlue,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final type in StaffType.values)
+                            ChoiceChip(
+                              label: Text(type.label),
+                              selected: _selectedType == type,
+                              onSelected: (_) {
+                                setState(() {
+                                  _selectedType = type;
+                                  _roleErrorMessage = null;
+                                });
+                              },
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (_selectedType == StaffType.officialStaff)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
@@ -1014,7 +1448,7 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          for (final role in _roles)
+                          for (final role in _officialRoles)
                             ChoiceChip(
                               label: Text(role),
                               selected: role == _selectedRole,
@@ -1042,7 +1476,30 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
                     ],
                   ),
                 ),
-                if (_isManagingRoles) ...[
+                if (_selectedType != StaffType.officialStaff) ...[
+                  TextFormField(
+                    controller: _unitNumberController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: _selectedType.unitLabel,
+                      hintText: _selectedType == StaffType.canteenTenant
+                          ? 'Example: 3'
+                          : 'Example: 12',
+                      border: const OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (!_selectedType.requiresUnitNumber) {
+                        return null;
+                      }
+                      final number = int.tryParse((value ?? '').trim());
+                      if (number == null || number <= 0) {
+                        return 'Enter a valid number';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+                if (_selectedType == StaffType.officialStaff && _isManagingRoles) ...[
                   const SizedBox(height: 16),
                   Container(
                     width: double.infinity,
@@ -1112,7 +1569,7 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            for (final role in _roles)
+                            for (final role in _officialRoles)
                               InputChip(
                                 label: Text(role),
                                 avatar: widget.lockedRoles.contains(role)
@@ -1155,10 +1612,17 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
             if (!_formKey.currentState!.validate()) {
               return;
             }
+            final unitNumber = _selectedType.requiresUnitNumber
+                ? int.tryParse(_unitNumberController.text.trim())
+                : null;
             Navigator.of(context).pop(
               StaffDraft(
                 name: _nameController.text.trim(),
-                role: _selectedRole,
+                staffType: _selectedType,
+                role: _selectedType == StaffType.officialStaff
+                    ? _selectedRole
+                    : _selectedType.fixedRole,
+                unitNumber: unitNumber,
               ),
             );
           },
@@ -1174,14 +1638,14 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
       return;
     }
 
-    final exists = _roles.any(
+    final exists = _officialRoles.any(
       (existingRole) => existingRole.toLowerCase() == role.toLowerCase(),
     );
 
     if (exists) {
       setState(() {
         _roleErrorMessage = null;
-        _selectedRole = _roles.firstWhere(
+        _selectedRole = _officialRoles.firstWhere(
           (existingRole) => existingRole.toLowerCase() == role.toLowerCase(),
         );
       });
@@ -1201,7 +1665,7 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
       }
 
       setState(() {
-        _roles = buildStaffRoleOptions([..._roles, createdRole]);
+        _officialRoles = buildOfficialRoleOptions([..._officialRoles, createdRole]);
         _selectedRole = createdRole;
         _newRoleController.clear();
         _isUpdatingRoles = false;
@@ -1219,7 +1683,7 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
   }
 
   bool _canDeleteRole(String role) {
-    return _roles.length > 1 &&
+    return _officialRoles.length > 1 &&
         !widget.lockedRoles.contains(role) &&
         role != _selectedRole;
   }
@@ -1241,7 +1705,10 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
       }
 
       setState(() {
-        _roles = _roles.where((entry) => entry != role).toList();
+        _officialRoles = _officialRoles.where((entry) => entry != role).toList();
+        if (_selectedRole == role && _officialRoles.isNotEmpty) {
+          _selectedRole = _officialRoles.first;
+        }
         _isUpdatingRoles = false;
       });
     } catch (error) {
@@ -1277,7 +1744,7 @@ class StaffQrDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${member.staffCode} • ${member.role}',
+              '${member.staffCode} • ${member.shortDescriptor}',
               style: const TextStyle(
                 color: WaterparkBrand.gray,
                 fontSize: 13,
@@ -1394,6 +1861,140 @@ class RoleChip extends StatelessWidget {
   }
 }
 
+class TypeChip extends StatelessWidget {
+  const TypeChip({required this.label, super.key});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF7FF),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: WaterparkBrand.deepBlue,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _BreakdownChip extends StatelessWidget {
+  const _BreakdownChip({required this.label, required this.count});
+
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: WaterparkBrand.lightBlue,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.badge_outlined,
+            color: WaterparkBrand.primaryBlue,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: const TextStyle(
+              color: WaterparkBrand.deepBlue,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '$count',
+            style: const TextStyle(
+              color: WaterparkBrand.primaryBlue,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RosterFilterChip extends StatelessWidget {
+  const _RosterFilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? WaterparkBrand.primaryBlue : const Color(0xFFF4FAFF),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? WaterparkBrand.primaryBlue
+                : const Color(0xFFDCEAF7),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.white : WaterparkBrand.deepBlue,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: selected
+                    ? Colors.white.withValues(alpha: 0.18)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  color: selected ? Colors.white : WaterparkBrand.primaryBlue,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class StaffStatusBadge extends StatelessWidget {
   const StaffStatusBadge({required this.status, super.key});
 
@@ -1443,17 +2044,19 @@ class StaffHeaderCell extends StatelessWidget {
 }
 
 class StaffBodyCell extends StatelessWidget {
-  const StaffBodyCell(this.text, {super.key});
+  const StaffBodyCell(this.text, {this.emphasis = false, super.key});
 
   final String text;
+  final bool emphasis;
 
   @override
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         color: WaterparkBrand.deepBlue,
-        fontSize: 13,
+        fontSize: emphasis ? 14 : 13,
+        fontWeight: emphasis ? FontWeight.w700 : FontWeight.w500,
         height: 1.35,
       ),
     );

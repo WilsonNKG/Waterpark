@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:waterpark/core/config/app_config.dart';
 import 'package:waterpark/core/theme/waterpark_brand.dart';
@@ -17,6 +18,7 @@ class QrScanPage extends StatefulWidget {
 
 class _QrScanPageState extends State<QrScanPage> {
   final StaffQrValidator _validator = const StaffQrValidator();
+  final AudioPlayer _audioPlayer = AudioPlayer()..setReleaseMode(ReleaseMode.stop);
   final MobileScannerController _scannerController = MobileScannerController(
     formats: const [BarcodeFormat.qrCode],
     detectionSpeed: DetectionSpeed.noDuplicates,
@@ -44,6 +46,7 @@ class _QrScanPageState extends State<QrScanPage> {
   @override
   void dispose() {
     _scannerController.dispose();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -191,6 +194,8 @@ class _QrScanPageState extends State<QrScanPage> {
       staffMembers: _staffMembers,
     );
 
+    await _playScanSound(result.status);
+
     if (!mounted) {
       return;
     }
@@ -199,6 +204,27 @@ class _QrScanPageState extends State<QrScanPage> {
       _isScannerActive = false;
       _result = result;
     });
+  }
+
+  Future<void> _playScanSound(QrScanStatus status) async {
+    final assetPath = switch (status) {
+      QrScanStatus.idle => null,
+      QrScanStatus.validStaff => 'audio/qr_success.wav',
+      QrScanStatus.unknownStaff ||
+      QrScanStatus.invalidFormat ||
+      QrScanStatus.tamperedData => 'audio/qr_failure.wav',
+    };
+
+    if (assetPath == null) {
+      return;
+    }
+
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.play(AssetSource(assetPath));
+    } catch (_) {
+      // Keep QR validation usable even if sound playback fails on a platform.
+    }
   }
 }
 
@@ -496,7 +522,14 @@ class ScanResultCard extends StatelessWidget {
               value: result.staffMember!.staffCode,
             ),
             ScanResultDetail(label: 'Name', value: result.staffMember!.name),
-            ScanResultDetail(label: 'Role', value: result.staffMember!.role),
+            ScanResultDetail(
+              label: 'Group',
+              value: result.staffMember!.groupLabel,
+            ),
+            ScanResultDetail(
+              label: 'Assignment',
+              value: result.staffMember!.assignmentLabel,
+            ),
           ],
           if (result.rawValue != null) ...[
             const SizedBox(height: 16),

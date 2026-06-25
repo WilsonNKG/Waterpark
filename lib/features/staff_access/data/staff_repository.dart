@@ -45,7 +45,12 @@ class SupabaseStaffRepository implements StaffRepository {
   Future<StaffMember> createStaff(StaffDraft draft) async {
     final row = await _client
         .from(_staffTable)
-        .insert({'name': draft.name, 'role': draft.role})
+        .insert({
+          'name': draft.name,
+          'role': draft.role,
+          'staff_type': draft.staffType.dbValue,
+          'unit_number': draft.unitNumber,
+        })
         .select()
         .single();
 

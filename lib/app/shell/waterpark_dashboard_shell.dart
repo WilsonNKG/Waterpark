@@ -44,8 +44,11 @@ class _WaterparkDashboardShellState extends State<WaterparkDashboardShell> {
             left: -60,
             child: BackgroundOrb(size: 260, color: Color(0x1000B8A9)),
           ),
-          SingleChildScrollView(
-            child: DashboardMainPanel(selected: _selectedSection),
+          SafeArea(
+            bottom: false,
+            child: SizedBox.expand(
+              child: DashboardMainPanel(selected: _selectedSection),
+            ),
           ),
         ],
       ),
@@ -253,19 +256,34 @@ class DashboardMainPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final content = switch (selected) {
+      AppSection.dashboard => const DashboardOverviewPage(),
+      AppSection.ticketing => const TicketingOverviewPage(),
+      AppSection.staffAccess => const StaffAccessPage(),
+      AppSection.qrScan => const QrScanPage(),
+      _ => const SectionPlaceholder(),
+    };
+
+    final scrollableSections = {
+      AppSection.dashboard,
+      AppSection.ticketing,
+      AppSection.qrScan,
+      AppSection.sales,
+      AppSection.reports,
+      AppSection.settings,
+    };
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const DashboardTopBar(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
-          child: switch (selected) {
-            AppSection.dashboard => const DashboardOverviewPage(),
-            AppSection.ticketing => const TicketingOverviewPage(),
-            AppSection.staffAccess => const StaffAccessPage(),
-            AppSection.qrScan => const QrScanPage(),
-            _ => const SectionPlaceholder(),
-          },
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
+            child: scrollableSections.contains(selected)
+                ? SingleChildScrollView(child: content)
+                : content,
+          ),
         ),
       ],
     );

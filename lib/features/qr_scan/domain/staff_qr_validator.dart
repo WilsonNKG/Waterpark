@@ -11,7 +11,7 @@ class StaffQrValidator {
     final normalized = rawValue.trim();
     final parts = normalized.split('|');
 
-    if (parts.length < 4 || parts.first != 'STAFF') {
+    if ((parts.length != 4 && parts.length != 6) || parts.first != 'STAFF') {
       return QrScanResult(
         status: QrScanStatus.invalidFormat,
         title: 'Invalid QR',
@@ -23,7 +23,9 @@ class StaffQrValidator {
 
     final staffCode = parts[1];
     final scannedName = parts[2];
-    final scannedRole = parts[3];
+    final scannedType = parts.length >= 6 ? parts[3] : null;
+    final scannedRole = parts.length >= 6 ? parts[4] : parts[3];
+    final scannedUnit = parts.length >= 6 ? parts[5] : null;
 
     final matchedStaff = staffMembers
         .where((member) => member.staffCode == staffCode)
@@ -42,8 +44,12 @@ class StaffQrValidator {
 
     final nameMatches = matchedStaff.name == scannedName;
     final roleMatches = matchedStaff.role == scannedRole;
+    final typeMatches =
+        scannedType == null || matchedStaff.staffType.dbValue == scannedType;
+    final unitMatches =
+        scannedUnit == null || matchedStaff.qrUnitValue == scannedUnit;
 
-    if (!nameMatches || !roleMatches) {
+    if (!nameMatches || !roleMatches || !typeMatches || !unitMatches) {
       return QrScanResult(
         status: QrScanStatus.tamperedData,
         title: 'QR Data Mismatch',
@@ -58,7 +64,7 @@ class StaffQrValidator {
       status: QrScanStatus.validStaff,
       title: 'Staff Verified',
       message:
-          '${matchedStaff.name} is a valid staff member with role ${matchedStaff.role}.',
+          '${matchedStaff.name} is a valid ${matchedStaff.shortDescriptor}.',
       rawValue: normalized,
       staffMember: matchedStaff,
     );
