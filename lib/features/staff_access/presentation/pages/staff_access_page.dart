@@ -4,6 +4,7 @@ import 'package:waterpark/core/config/app_config.dart';
 import 'package:waterpark/core/theme/waterpark_brand.dart';
 import 'package:waterpark/features/staff_access/data/staff_repository.dart';
 import 'package:waterpark/features/staff_access/domain/staff_member.dart';
+import 'package:waterpark/features/staff_access/presentation/utils/qr_download.dart';
 import 'package:waterpark/shared/widgets/brand_surface.dart';
 
 class StaffAccessPage extends StatefulWidget {
@@ -23,6 +24,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _rosterScrollController = ScrollController();
   String _searchQuery = '';
+  double? _rosterCardHeight;
   bool _isLoading = true;
   bool _isSaving = false;
   String? _errorMessage;
@@ -54,7 +56,12 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
       builder: (context, constraints) {
         final compactHeight = constraints.maxHeight < 720;
         final compactWidth = constraints.maxWidth < 1500;
-        final rosterCardHeight = compactHeight ? 520.0 : 680.0;
+        final minRosterHeight = compactHeight ? 420.0 : 540.0;
+        final maxRosterHeight = compactHeight ? 920.0 : 1280.0;
+        final defaultRosterHeight = compactHeight ? 520.0 : 680.0;
+        final rosterCardHeight = ((_rosterCardHeight ?? defaultRosterHeight)
+                .clamp(minRosterHeight, maxRosterHeight))
+            as double;
 
         return SingleChildScrollView(
           child: ConstrainedBox(
@@ -120,6 +127,15 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
                       activeFilter: _activeFilter,
                       searchController: _searchController,
                       scrollController: _rosterScrollController,
+                      onResize: (delta) {
+                        setState(() {
+                          final nextHeight = rosterCardHeight + delta;
+                          _rosterCardHeight = nextHeight.clamp(
+                            minRosterHeight,
+                            maxRosterHeight,
+                          );
+                        });
+                      },
                       onFilterChanged: (filter) {
                         setState(() {
                           _activeFilter = filter;
@@ -156,6 +172,15 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
                             activeFilter: _activeFilter,
                             searchController: _searchController,
                             scrollController: _rosterScrollController,
+                            onResize: (delta) {
+                              setState(() {
+                                final nextHeight = rosterCardHeight + delta;
+                                _rosterCardHeight = nextHeight.clamp(
+                                  minRosterHeight,
+                                  maxRosterHeight,
+                                );
+                              });
+                            },
                             onFilterChanged: (filter) {
                               setState(() {
                                 _activeFilter = filter;
@@ -444,7 +469,10 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   Future<void> _showQrDialog(StaffMember member) async {
     final action = await showDialog<QrDialogAction>(
       context: context,
-      builder: (context) => StaffQrDialog(member: member),
+      builder: (context) => StaffQrDialog(
+        member: member,
+        onDownloadQr: member.hasQr ? () => _downloadQr(member) : null,
+      ),
     );
 
     if (action == null) {
@@ -487,6 +515,43 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
 
   String _buildQrPayload(StaffMember member) {
     return 'STAFF|${member.staffCode}|${member.name}|${member.staffType.dbValue}|${member.role}|${member.qrUnitValue}';
+  }
+
+  Future<void> _downloadQr(StaffMember member) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      final painter = QrPainter(
+        data: member.qrPayload!,
+        version: QrVersions.auto,
+        gapless: true,
+        color: Colors.black,
+        emptyColor: Colors.white,
+      );
+      final imageData = await painter.toImageData(1200);
+      final bytes = imageData?.buffer.asUint8List();
+
+      if (bytes == null) {
+        throw StateError('QR image data could not be created.');
+      }
+
+      final fileName = '${member.staffCode.toLowerCase()}_qr.png';
+      await downloadQrImage(bytes: bytes, fileName: fileName);
+
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text('Downloaded QR for ${member.name}.')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not download QR. $error')),
+      );
+    }
   }
 
   void _replaceMember(StaffMember updated) {
@@ -731,6 +796,7 @@ class StaffRosterCard extends StatelessWidget {
     required this.activeFilter,
     required this.searchController,
     required this.scrollController,
+    required this.onResize,
     required this.onFilterChanged,
     required this.onSearchChanged,
     required this.onAddStaff,
@@ -746,6 +812,7 @@ class StaffRosterCard extends StatelessWidget {
   final StaffRosterFilter activeFilter;
   final TextEditingController searchController;
   final ScrollController scrollController;
+  final ValueChanged<double> onResize;
   final ValueChanged<StaffRosterFilter> onFilterChanged;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onAddStaff;
@@ -1002,6 +1069,36 @@ class StaffRosterCard extends StatelessWidget {
                                 ),
                               ),
                       ),
+                      const SizedBox(height: 8),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeUpDown,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onVerticalDragUpdate: (details) {
+                            onResize(details.delta.dy);
+                          },
+                          child: Center(
+                            child: Container(
+                              width: 120,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF2F7FD),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: const Color(0xFFD7E7F6),
+                                ),
+                              ),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.drag_handle_rounded,
+                                  size: 16,
+                                  color: WaterparkBrand.primaryBlue,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1134,19 +1231,24 @@ class StaffRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ActionChipButton(
-                  label: member.hasQr ? 'View QR' : 'Generate QR',
+                  tooltip: member.hasQr ? 'View QR' : 'Generate QR',
+                  icon: member.hasQr
+                      ? Icons.qr_code_2_rounded
+                      : Icons.add_circle_outline_rounded,
                   color: WaterparkBrand.primaryBlue,
                   onPressed: isSaving ? null : onOpenQr,
                 ),
                 const SizedBox(width: 8),
                 ActionChipButton(
-                  label: 'Delete QR',
+                  tooltip: 'Delete QR',
+                  icon: Icons.delete_outline_rounded,
                   color: WaterparkBrand.warning,
                   onPressed: isSaving ? null : onDeleteQr,
                 ),
                 const SizedBox(width: 8),
                 ActionChipButton(
-                  label: 'Delete Staff',
+                  tooltip: 'Delete Staff',
+                  icon: Icons.person_remove_alt_1_rounded,
                   color: WaterparkBrand.accentRed,
                   onPressed: isSaving ? null : onDeleteStaff,
                 ),
@@ -1161,40 +1263,43 @@ class StaffRow extends StatelessWidget {
 
 class ActionChipButton extends StatelessWidget {
   const ActionChipButton({
-    required this.label,
+    required this.tooltip,
+    required this.icon,
     required this.color,
     required this.onPressed,
     super.key,
   });
 
-  final String label;
+  final String tooltip;
+  final IconData icon;
   final Color color;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: onPressed == null
-              ? const Color(0xFFF3F5F8)
-              : color.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
             color: onPressed == null
-                ? const Color(0xFFE3EAF1)
-                : color.withValues(alpha: 0.15),
+                ? const Color(0xFFF3F5F8)
+                : color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: onPressed == null
+                  ? const Color(0xFFE3EAF1)
+                  : color.withValues(alpha: 0.15),
+            ),
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
+          child: Icon(
+            icon,
+            size: 20,
             color: onPressed == null ? WaterparkBrand.gray : color,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
           ),
         ),
       ),
@@ -1743,32 +1848,137 @@ class _AddStaffDialogState extends State<AddStaffDialog> {
 
 enum QrDialogAction { generate, delete }
 
-class StaffQrDialog extends StatelessWidget {
-  const StaffQrDialog({required this.member, super.key});
+class StaffQrDialog extends StatefulWidget {
+  const StaffQrDialog({
+    required this.member,
+    required this.onDownloadQr,
+    super.key,
+  });
 
   final StaffMember member;
+  final Future<void> Function()? onDownloadQr;
+
+  @override
+  State<StaffQrDialog> createState() => _StaffQrDialogState();
+}
+
+class _StaffQrDialogState extends State<StaffQrDialog> {
+  bool _isDownloading = false;
+
+  Future<void> _confirmDeleteQr() async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete QR'),
+          content: Text(
+            'Delete the QR code for ${widget.member.name}?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: WaterparkBrand.accentRed,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || shouldDelete != true) {
+      return;
+    }
+
+    Navigator.of(context).pop(QrDialogAction.delete);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final member = widget.member;
     final hasQr = member.hasQr;
 
     return AlertDialog(
-      title: Text('${member.name} QR'),
       content: SizedBox(
         width: 360,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '${member.staffCode} • ${member.shortDescriptor}',
-              style: const TextStyle(
-                color: WaterparkBrand.gray,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${member.name} QR',
+                          style: const TextStyle(
+                            color: WaterparkBrand.deepBlue,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${member.staffCode} • ${member.shortDescriptor}',
+                          style: const TextStyle(
+                            color: WaterparkBrand.gray,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (hasQr)
+                  IconButton(
+                    tooltip: 'Download QR',
+                    onPressed: _isDownloading
+                        ? null
+                        : () async {
+                            if (widget.onDownloadQr == null) {
+                              return;
+                            }
+                            setState(() {
+                              _isDownloading = true;
+                            });
+                            await widget.onDownloadQr!.call();
+                            if (!mounted) {
+                              return;
+                            }
+                            setState(() {
+                              _isDownloading = false;
+                            });
+                          },
+                    icon: _isDownloading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_rounded),
+                  )
+                else
+                  const SizedBox(width: 48),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             if (hasQr) ...[
               Center(
                 child: Container(
@@ -1830,25 +2040,28 @@ class StaffQrDialog extends StatelessWidget {
                 ),
               ),
             ],
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                if (hasQr)
+                  IconButton(
+                    tooltip: 'Delete QR',
+                    onPressed: _confirmDeleteQr,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                  )
+                else
+                  IconButton(
+                    tooltip: 'Generate QR',
+                    onPressed: () =>
+                        Navigator.of(context).pop(QrDialogAction.generate),
+                    icon: const Icon(Icons.add_circle_outline_rounded),
+                  ),
+                const Spacer(),
+              ],
+            ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
-        ),
-        if (hasQr)
-          FilledButton.tonal(
-            onPressed: () => Navigator.of(context).pop(QrDialogAction.delete),
-            child: const Text('Delete QR'),
-          )
-        else
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(QrDialogAction.generate),
-            child: const Text('Generate QR'),
-          ),
-      ],
     );
   }
 }
