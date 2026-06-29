@@ -21,6 +21,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   List<String> _roleOptions = buildStaffRoleOptions(const []);
   StaffRosterFilter _activeFilter = StaffRosterFilter.all;
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _rosterScrollController = ScrollController();
   String _searchQuery = '';
   bool _isLoading = true;
   bool _isSaving = false;
@@ -41,6 +42,7 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
   @override
   void dispose() {
     _searchController.dispose();
+    _rosterScrollController.dispose();
     super.dispose();
   }
 
@@ -50,131 +52,141 @@ class _StaffAccessPageState extends State<StaffAccessPage> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compactHeight = constraints.maxHeight < 860;
+        final compactHeight = constraints.maxHeight < 720;
         final compactWidth = constraints.maxWidth < 1500;
+        final rosterCardHeight = compactHeight ? 520.0 : 680.0;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Staff Access',
-              style: TextStyle(
-                color: WaterparkBrand.deepBlue,
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              AppConfig.hasSupabase
-                  ? 'Your staff list is connected to Supabase. Add staff, open their QR, remove a QR only, or delete the full staff record.'
-                  : 'Supabase is required for the staff module. If the database is not configured, this page stays empty and shows an error instead of sample data.',
-              style: const TextStyle(
-                color: WaterparkBrand.gray,
-                fontSize: 14,
-                height: 1.5,
-              ),
-            ),
-            SizedBox(height: compactHeight ? 10 : 12),
-            StaffTopBar(
-              total: _staffMembers.length,
-              readyQr: _staffMembers.where((member) => member.hasQr).length,
-              missingQr: _staffMembers.where((member) => !member.hasQr).length,
-              isConnectedToSupabase: AppConfig.hasSupabase,
-              onAddStaff: AppConfig.hasSupabase && !_isSaving
-                  ? _handleAddStaff
-                  : null,
-            ),
-            if (!AppConfig.hasSupabase) ...[
-              SizedBox(height: compactHeight ? 10 : 12),
-              const SupabaseSetupNotice(),
-            ],
-            SizedBox(height: compactHeight ? 10 : 12),
-            if (_errorMessage != null) ...[
-              ErrorBanner(message: _errorMessage!, onRetry: _loadStaff),
-              SizedBox(height: compactHeight ? 10 : 12),
-            ],
-            Expanded(
-              child: _isLoading
-                  ? const BrandSurface(
-                      child: Padding(
-                        padding: EdgeInsets.all(12),
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Staff Access',
+                  style: TextStyle(
+                    color: WaterparkBrand.deepBlue,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  AppConfig.hasSupabase
+                      ? 'Your staff list is connected to Supabase. Add staff, open their QR, remove a QR only, or delete the full staff record.'
+                      : 'Supabase is required for the staff module. If the database is not configured, this page stays empty and shows an error instead of sample data.',
+                  style: const TextStyle(
+                    color: WaterparkBrand.gray,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
+                SizedBox(height: compactHeight ? 10 : 12),
+                StaffTopBar(
+                  total: _staffMembers.length,
+                  readyQr: _staffMembers.where((member) => member.hasQr).length,
+                  missingQr: _staffMembers.where((member) => !member.hasQr).length,
+                  isConnectedToSupabase: AppConfig.hasSupabase,
+                  onAddStaff: AppConfig.hasSupabase && !_isSaving
+                      ? _handleAddStaff
+                      : null,
+                ),
+                if (!AppConfig.hasSupabase) ...[
+                  SizedBox(height: compactHeight ? 10 : 12),
+                  const SupabaseSetupNotice(),
+                ],
+                SizedBox(height: compactHeight ? 10 : 12),
+                if (_errorMessage != null) ...[
+                  ErrorBanner(message: _errorMessage!, onRetry: _loadStaff),
+                  SizedBox(height: compactHeight ? 10 : 12),
+                ],
+                if (_isLoading)
+                  const BrandSurface(
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        height: 320,
                         child: Center(child: CircularProgressIndicator()),
                       ),
-                    )
-                  : compactWidth || compactHeight
-                      ? Column(
-                          children: [
-                            Expanded(
-                              child: StaffRosterCard(
-                                members: visibleMembers,
-                                allMembers: _staffMembers,
-                                isSaving: _isSaving,
-                                activeFilter: _activeFilter,
-                                searchController: _searchController,
-                                onFilterChanged: (filter) {
-                                  setState(() {
-                                    _activeFilter = filter;
-                                  });
-                                },
-                                onSearchChanged: (value) {
-                                  setState(() {
-                                    _searchQuery = value;
-                                  });
-                                },
-                                onAddStaff: _handleAddStaff,
-                                onOpenQr: _showQrDialog,
-                                onDeleteQr: _deleteQr,
-                                onDeleteStaff: _confirmDeleteStaff,
-                              ),
-                            ),
-                            SizedBox(height: compactHeight ? 8 : 10),
-                            StaffRoleBreakdown(
-                              members: _staffMembers,
-                              availableRoles: _roleOptions,
-                              initiallyExpanded: false,
-                            ),
-                          ],
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: StaffRosterCard(
-                                members: visibleMembers,
-                                allMembers: _staffMembers,
-                                isSaving: _isSaving,
-                                activeFilter: _activeFilter,
-                                searchController: _searchController,
-                                onFilterChanged: (filter) {
-                                  setState(() {
-                                    _activeFilter = filter;
-                                  });
-                                },
-                                onSearchChanged: (value) {
-                                  setState(() {
-                                    _searchQuery = value;
-                                  });
-                                },
-                                onAddStaff: _handleAddStaff,
-                                onOpenQr: _showQrDialog,
-                                onDeleteQr: _deleteQr,
-                                onDeleteStaff: _confirmDeleteStaff,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            SizedBox(
-                              width: 320,
-                              child: StaffRoleBreakdown(
-                                members: _staffMembers,
-                                availableRoles: _roleOptions,
-                                initiallyExpanded: true,
-                              ),
-                            ),
-                          ],
+                    ),
+                  )
+                else if (compactWidth || compactHeight) ...[
+                  SizedBox(
+                    height: rosterCardHeight,
+                    child: StaffRosterCard(
+                      members: visibleMembers,
+                      allMembers: _staffMembers,
+                      isSaving: _isSaving,
+                      activeFilter: _activeFilter,
+                      searchController: _searchController,
+                      scrollController: _rosterScrollController,
+                      onFilterChanged: (filter) {
+                        setState(() {
+                          _activeFilter = filter;
+                        });
+                      },
+                      onSearchChanged: (value) {
+                        setState(() {
+                          _searchQuery = value;
+                        });
+                      },
+                      onAddStaff: _handleAddStaff,
+                      onOpenQr: _showQrDialog,
+                      onDeleteQr: _deleteQr,
+                      onDeleteStaff: _confirmDeleteStaff,
+                    ),
+                  ),
+                  SizedBox(height: compactHeight ? 8 : 10),
+                  StaffRoleBreakdown(
+                    members: _staffMembers,
+                    availableRoles: _roleOptions,
+                    initiallyExpanded: false,
+                  ),
+                ] else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: rosterCardHeight,
+                          child: StaffRosterCard(
+                            members: visibleMembers,
+                            allMembers: _staffMembers,
+                            isSaving: _isSaving,
+                            activeFilter: _activeFilter,
+                            searchController: _searchController,
+                            scrollController: _rosterScrollController,
+                            onFilterChanged: (filter) {
+                              setState(() {
+                                _activeFilter = filter;
+                              });
+                            },
+                            onSearchChanged: (value) {
+                              setState(() {
+                                _searchQuery = value;
+                              });
+                            },
+                            onAddStaff: _handleAddStaff,
+                            onOpenQr: _showQrDialog,
+                            onDeleteQr: _deleteQr,
+                            onDeleteStaff: _confirmDeleteStaff,
+                          ),
                         ),
+                      ),
+                      const SizedBox(width: 14),
+                      SizedBox(
+                        width: 320,
+                        child: StaffRoleBreakdown(
+                          members: _staffMembers,
+                          availableRoles: _roleOptions,
+                          initiallyExpanded: true,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -718,6 +730,7 @@ class StaffRosterCard extends StatelessWidget {
     required this.isSaving,
     required this.activeFilter,
     required this.searchController,
+    required this.scrollController,
     required this.onFilterChanged,
     required this.onSearchChanged,
     required this.onAddStaff,
@@ -732,6 +745,7 @@ class StaffRosterCard extends StatelessWidget {
   final bool isSaving;
   final StaffRosterFilter activeFilter;
   final TextEditingController searchController;
+  final ScrollController scrollController;
   final ValueChanged<StaffRosterFilter> onFilterChanged;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onAddStaff;
@@ -755,7 +769,7 @@ class StaffRosterCard extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compactWidth = constraints.maxWidth < 1500;
-          final compactHeight = constraints.maxHeight < 560;
+          final compactHeight = constraints.maxHeight < 500;
           final contentWidth = compactWidth
               ? constraints.maxWidth
               : constraints.maxWidth > 1540
@@ -946,7 +960,7 @@ class StaffRosterCard extends StatelessWidget {
                                 ),
                                 Expanded(child: StaffHeaderCell('Status')),
                                 Expanded(
-                                  flex: 2,
+                                  flex: 3,
                                   child: StaffHeaderCell('Actions'),
                                 ),
                               ],
@@ -959,8 +973,10 @@ class StaffRosterCard extends StatelessWidget {
                         child: members.isEmpty
                             ? EmptyRosterCard(filter: activeFilter)
                             : Scrollbar(
+                                controller: scrollController,
                                 thumbVisibility: true,
                                 child: ListView.separated(
+                                  controller: scrollController,
                                   itemCount: members.length,
                                   separatorBuilder: (_, _) =>
                                       const SizedBox(height: 6),
@@ -1050,7 +1066,7 @@ class StaffRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
@@ -1113,21 +1129,22 @@ class StaffRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            flex: 2,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            flex: 3,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 ActionChipButton(
                   label: member.hasQr ? 'View QR' : 'Generate QR',
                   color: WaterparkBrand.primaryBlue,
                   onPressed: isSaving ? null : onOpenQr,
                 ),
+                const SizedBox(width: 8),
                 ActionChipButton(
                   label: 'Delete QR',
                   color: WaterparkBrand.warning,
                   onPressed: isSaving ? null : onDeleteQr,
                 ),
+                const SizedBox(width: 8),
                 ActionChipButton(
                   label: 'Delete Staff',
                   color: WaterparkBrand.accentRed,
