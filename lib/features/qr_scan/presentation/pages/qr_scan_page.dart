@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:waterpark/core/config/app_config.dart';
@@ -23,17 +24,26 @@ class _QrScanPageState extends State<QrScanPage> {
     formats: const [BarcodeFormat.qrCode],
     detectionSpeed: DetectionSpeed.noDuplicates,
   );
+  final FocusNode _scannerInputFocusNode = FocusNode();
 
   StaffRepository? _repository;
   List<StaffMember> _staffMembers = const [];
   QrScanResult _result = const QrScanResult.idle();
   bool _isLoading = true;
   bool _isScannerActive = false;
+  bool _isProcessingInput = false;
   String? _errorMessage;
+  final StringBuffer _scannerBuffer = StringBuffer();
+  DateTime? _lastScannerKeyAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _scannerInputFocusNode.requestFocus();
+      }
+    });
     try {
       _repository = StaffRepository.create();
     } catch (error) {
@@ -45,6 +55,7 @@ class _QrScanPageState extends State<QrScanPage> {
 
   @override
   void dispose() {
+    _scannerInputFocusNode.dispose();
     _scannerController.dispose();
     _audioPlayer.dispose();
     super.dispose();
@@ -66,7 +77,7 @@ class _QrScanPageState extends State<QrScanPage> {
         const SizedBox(height: 8),
         Text(
           AppConfig.hasSupabase
-              ? 'Scan a staff QR code using the device camera. The system will verify the QR payload against the staff database and flag invalid codes.'
+              ? 'Scan a staff QR code using the device camera or a Bluetooth scanner in keyboard mode. The system verifies the QR payload against the staff database and flags invalid codes.'
               : 'Supabase is required for QR scanning. Configure the database first so the scanner can verify staff records.',
           style: const TextStyle(
             color: WaterparkBrand.gray,
@@ -91,8 +102,11 @@ class _QrScanPageState extends State<QrScanPage> {
             final scannerCard = ScanCameraCard(
               isLoading: _isLoading,
               isScannerActive: _isScannerActive,
+              scannerInputFocusNode: _scannerInputFocusNode,
+              isProcessingInput: _isProcessingInput,
               onStartScan: _startScanner,
               onScanAgain: _restartScanner,
+              onScannerKeyEvent: _handleScannerKeyEvent,
               onDetect: _handleDetection,
               controller: _scannerController,
             );
@@ -171,6 +185,7 @@ class _QrScanPageState extends State<QrScanPage> {
 
   Future<void> _restartScanner() async {
     await _scannerController.stop();
+    _scannerBuffer.clear();
     await _startScanner();
   }
 
@@ -188,9 +203,57 @@ class _QrScanPageState extends State<QrScanPage> {
     }
 
     await _scannerController.stop();
+    await _processRawScan(firstCode.trim());
+  }
+
+  KeyEventResult _handleScannerKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent || _isLoading || _isProcessingInput) {
+      return KeyEventResult.ignored;
+    }
+
+    final now = DateTime.now();
+    final elapsed = _lastScannerKeyAt == null
+        ? null
+        : now.difference(_lastScannerKeyAt!);
+    _lastScannerKeyAt = now;
+
+    if (elapsed != null && elapsed.inMilliseconds > 250) {
+      _scannerBuffer.clear();
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      final rawValue = _scannerBuffer.toString().trim();
+      _scannerBuffer.clear();
+      if (rawValue.isNotEmpty) {
+        _scannerController.stop();
+        _processRawScan(rawValue).whenComplete(() {
+          if (mounted) {
+            _scannerInputFocusNode.requestFocus();
+          }
+        });
+      }
+      return KeyEventResult.handled;
+    }
+
+    final character = event.character;
+    if (character != null &&
+        character.isNotEmpty &&
+        !_isControlCharacter(character)) {
+      _scannerBuffer.write(character);
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  Future<void> _processRawScan(String rawValue) async {
+    setState(() {
+      _isProcessingInput = true;
+    });
 
     final result = _validator.validate(
-      rawValue: firstCode,
+      rawValue: rawValue,
       staffMembers: _staffMembers,
     );
 
@@ -202,6 +265,7 @@ class _QrScanPageState extends State<QrScanPage> {
 
     setState(() {
       _isScannerActive = false;
+      _isProcessingInput = false;
       _result = result;
     });
   }
@@ -341,8 +405,11 @@ class ScanCameraCard extends StatelessWidget {
   const ScanCameraCard({
     required this.isLoading,
     required this.isScannerActive,
+    required this.scannerInputFocusNode,
+    required this.isProcessingInput,
     required this.onStartScan,
     required this.onScanAgain,
+    required this.onScannerKeyEvent,
     required this.onDetect,
     required this.controller,
     super.key,
@@ -350,8 +417,12 @@ class ScanCameraCard extends StatelessWidget {
 
   final bool isLoading;
   final bool isScannerActive;
+  final FocusNode scannerInputFocusNode;
+  final bool isProcessingInput;
   final Future<void> Function() onStartScan;
   final Future<void> Function() onScanAgain;
+  final KeyEventResult Function(FocusNode node, KeyEvent event)
+      onScannerKeyEvent;
   final void Function(BarcodeCapture capture) onDetect;
   final MobileScannerController controller;
 
@@ -371,8 +442,107 @@ class ScanCameraCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Use the system camera to scan a staff QR. The scan stops after detection so the result can be reviewed clearly.',
+            'Use the system camera or a Bluetooth scanner to scan a staff QR. Camera scanning stops after detection so the result can be reviewed clearly.',
             style: TextStyle(color: WaterparkBrand.gray, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FBFF),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE3EEF8)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Scanner Input',
+                  style: TextStyle(
+                    color: WaterparkBrand.deepBlue,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Bluetooth scanner mode is armed here. Click once if needed, then scan. Input stays hidden and verifies immediately after Enter.',
+                  style: TextStyle(
+                    color: WaterparkBrand.gray,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Focus(
+                  focusNode: scannerInputFocusNode,
+                  onKeyEvent: onScannerKeyEvent,
+                  child: ListenableBuilder(
+                    listenable: scannerInputFocusNode,
+                    builder: (context, _) {
+                      final hasFocus = scannerInputFocusNode.hasFocus;
+                      return InkWell(
+                        onTap: () => scannerInputFocusNode.requestFocus(),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: hasFocus
+                                  ? WaterparkBrand.primaryBlue
+                                  : const Color(0xFFDCEAF7),
+                              width: hasFocus ? 1.6 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.qr_code_scanner_rounded),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  isProcessingInput
+                                      ? 'Verifying scan...'
+                                      : hasFocus
+                                          ? 'Scanner ready. Scan now.'
+                                          : 'Click here once to arm the Bluetooth scanner.',
+                                  style: const TextStyle(
+                                    color: WaterparkBrand.deepBlue,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              if (isProcessingInput)
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              else
+                                Icon(
+                                  hasFocus
+                                      ? Icons.radio_button_checked_rounded
+                                      : Icons.center_focus_strong_rounded,
+                                  color: hasFocus
+                                      ? WaterparkBrand.success
+                                      : WaterparkBrand.primaryBlue,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 14),
           AspectRatio(
@@ -465,6 +635,10 @@ class ScanCameraCard extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _isControlCharacter(String value) {
+  return value.codeUnits.any((unit) => unit < 32 || unit == 127);
 }
 
 class ScanResultCard extends StatelessWidget {
