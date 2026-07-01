@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:waterpark/core/theme/waterpark_brand.dart';
 import 'package:waterpark/shared/widgets/brand_surface.dart';
@@ -12,49 +13,16 @@ class TicketingOverviewPage extends StatefulWidget {
 
 class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
   final _formKey = GlobalKey<FormState>();
-  final _batchLabelController = TextEditingController(text: 'WKD-2906-A');
-  final _priceController = TextEditingController(text: '75000');
-  final _quantityController = TextEditingController(text: '120');
-  final _operatorController = TextEditingController(text: 'Front Desk');
+  final _batchLabelController = TextEditingController();
+  final _priceController = TextEditingController();
+  final _quantityController = TextEditingController();
+  final _operatorController = TextEditingController();
 
-  final List<TicketBatchRecord> _batches = [
-    TicketBatchRecord.create(
-      batchLabel: 'WKD-2906-A',
-      type: 'Weekday',
-      quantity: 120,
-      price: 75000,
-      visitDate: DateTime(2026, 6, 29),
-      operator: 'Front Desk',
-    ),
-    TicketBatchRecord.create(
-      batchLabel: 'WND-2906-A',
-      type: 'Weekend',
-      quantity: 80,
-      price: 95000,
-      visitDate: DateTime(2026, 6, 30),
-      operator: 'Counter 2',
-    ),
-  ];
+  final List<TicketBatchRecord> _batches = [];
 
   String _selectedType = 'Weekday';
-  DateTime _selectedDate = DateTime(2026, 6, 29);
+  DateTime _selectedDate = DateTime.now();
   int _selectedBatchIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _batches[0].tickets[0] = _batches[0].tickets[0].copyWith(
-      status: TicketStatus.used,
-      scannedAt: DateTime(2026, 6, 29, 9, 12),
-    );
-    _batches[0].tickets[1] = _batches[0].tickets[1].copyWith(
-      status: TicketStatus.used,
-      scannedAt: DateTime(2026, 6, 29, 9, 14),
-    );
-    _batches[1].tickets[0] = _batches[1].tickets[0].copyWith(
-      status: TicketStatus.voided,
-    );
-  }
 
   @override
   void dispose() {
@@ -80,7 +48,7 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
       0,
       (sum, batch) => sum + batch.ready,
     );
-    final selectedBatch = _batches[_selectedBatchIndex];
+    final selectedBatch = _batches.isEmpty ? null : _batches[_selectedBatchIndex];
 
     return SingleChildScrollView(
       child: Column(
@@ -111,6 +79,11 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
             voidedTickets: voidedTickets,
           ),
           const SizedBox(height: 16),
+          BatchSelectionOverviewCard(
+            totalBatches: _batches.length,
+            activeBatch: selectedBatch,
+          ),
+          const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
               final stacked = constraints.maxWidth < 1180;
@@ -137,16 +110,7 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
                     TicketBatchTableCard(
                       batches: _batches,
                       selectedBatchIndex: _selectedBatchIndex,
-                      onSelectBatch: (index) {
-                        setState(() {
-                          _selectedBatchIndex = index;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TicketBatchDetailCard(
-                      batch: selectedBatch,
-                      onTicketStatusChanged: _updateTicketStatus,
+                      onSelectBatch: _openBatchDetails,
                     ),
                   ],
                 );
@@ -179,21 +143,9 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
                         TicketBatchTableCard(
                           batches: _batches,
                           selectedBatchIndex: _selectedBatchIndex,
-                          onSelectBatch: (index) {
-                            setState(() {
-                              _selectedBatchIndex = index;
-                            });
-                          },
+                          onSelectBatch: _openBatchDetails,
                         ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 4,
-                    child: TicketBatchDetailCard(
-                      batch: selectedBatch,
-                      onTicketStatusChanged: _updateTicketStatus,
                     ),
                   ),
                 ],
@@ -228,7 +180,7 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
     }
 
     final quantity = int.parse(_quantityController.text.trim());
-    final price = int.parse(_priceController.text.trim());
+    final price = _parseCurrency(_priceController.text)!;
 
     final batch = TicketBatchRecord.create(
       batchLabel: _batchLabelController.text.trim().toUpperCase(),
@@ -242,9 +194,10 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
     setState(() {
       _batches.insert(0, batch);
       _selectedBatchIndex = 0;
-      _batchLabelController.text =
-          '${_prefixForType(_selectedType)}-${_selectedDate.day.toString().padLeft(2, '0')}${_selectedDate.month.toString().padLeft(2, '0')}-A';
-      _quantityController.text = '100';
+      _batchLabelController.clear();
+      _priceController.clear();
+      _quantityController.clear();
+      _operatorController.clear();
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -257,6 +210,10 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
   }
 
   void _updateTicketStatus(String ticketCode, TicketStatus status) {
+    if (_batches.isEmpty) {
+      return;
+    }
+
     final batch = _batches[_selectedBatchIndex];
     final ticketIndex = batch.tickets.indexWhere(
       (ticket) => ticket.code == ticketCode,
@@ -273,14 +230,23 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
     });
   }
 
-  String _prefixForType(String type) {
-    return switch (type) {
-      'Weekday' => 'WKD',
-      'Weekend' => 'WND',
-      'Group' => 'GRP',
-      'Promo' => 'PRM',
-      _ => 'TKT',
-    };
+  Future<void> _openBatchDetails(int index) async {
+    setState(() {
+      _selectedBatchIndex = index;
+    });
+
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => TicketBatchDetailsPage(
+          batch: _batches[index],
+          onTicketStatusChanged: _updateTicketStatus,
+        ),
+      ),
+    );
   }
 }
 
@@ -367,6 +333,144 @@ class TicketSummaryRow extends StatelessWidget {
   }
 }
 
+class BatchSelectionOverviewCard extends StatelessWidget {
+  const BatchSelectionOverviewCard({
+    required this.totalBatches,
+    required this.activeBatch,
+    super.key,
+  });
+
+  final int totalBatches;
+  final TicketBatchRecord? activeBatch;
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandSurface(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stacked = constraints.maxWidth < 880;
+          final activeLabel = activeBatch?.batchLabel ?? 'No batch selected';
+          final activeMeta = activeBatch == null
+              ? 'Create a batch, then click it to preview all tickets and statuses.'
+              : '${activeBatch!.type} • ${activeBatch!.tickets.length} tickets • ${activeBatch!.batchStatusLabel}';
+
+          final totalCard = _BatchOverviewMetric(
+            title: 'All Batches',
+            value: '$totalBatches',
+            subtitle: totalBatches == 1 ? '1 batch created' : '$totalBatches batches created',
+            icon: Icons.layers_rounded,
+            color: WaterparkBrand.primaryBlue,
+          );
+
+          final activeCard = _BatchOverviewMetric(
+            title: 'Active Batch',
+            value: activeLabel,
+            subtitle: activeMeta,
+            icon: Icons.local_activity_rounded,
+            color: activeBatch?.batchStatusColor ?? WaterparkBrand.aqua,
+          );
+
+          if (stacked) {
+            return Column(
+              children: [
+                totalCard,
+                const SizedBox(height: 12),
+                activeCard,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: totalCard),
+              const SizedBox(width: 12),
+              Expanded(child: activeCard),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _BatchOverviewMetric extends StatelessWidget {
+  const _BatchOverviewMetric({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String value;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FCFF),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE3EEF8)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: WaterparkBrand.gray,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: WaterparkBrand.deepBlue,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: WaterparkBrand.gray,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class TicketBatchCreateCard extends StatelessWidget {
   const TicketBatchCreateCard({
     required this.formKey,
@@ -444,37 +548,44 @@ class TicketBatchCreateCard extends StatelessWidget {
                       TicketingTextField(
                         controller: batchLabelController,
                         label: 'Batch Label',
-                        hint: 'WKD-2906-A',
+                        hint: 'Ex: WKD-2906-A',
+                        required: true,
                       ),
                       const SizedBox(height: 12),
                       _TypePicker(
                         selectedType: selectedType,
                         onChanged: onTypeChanged,
+                        required: true,
                       ),
                       const SizedBox(height: 12),
                       _DateField(
                         selectedDate: selectedDate,
                         onTap: onDateTap,
+                        required: true,
                       ),
                       const SizedBox(height: 12),
                       TicketingTextField(
                         controller: quantityController,
                         label: 'Quantity',
-                        hint: '100',
+                        hint: 'Ex: 100',
                         keyboardType: TextInputType.number,
+                        required: true,
                       ),
                       const SizedBox(height: 12),
                       TicketingTextField(
                         controller: priceController,
                         label: 'Price',
-                        hint: '75000',
+                        hint: 'Ex: 75.000',
                         keyboardType: TextInputType.number,
+                        required: true,
+                        isCurrency: true,
                       ),
                       const SizedBox(height: 12),
                       TicketingTextField(
                         controller: operatorController,
                         label: 'Operator',
-                        hint: 'Front Desk',
+                        hint: 'Ex: Front Desk',
+                        required: true,
                       ),
                     ],
                   );
@@ -488,7 +599,8 @@ class TicketBatchCreateCard extends StatelessWidget {
                           child: TicketingTextField(
                             controller: batchLabelController,
                             label: 'Batch Label',
-                            hint: 'WKD-2906-A',
+                            hint: 'Ex: WKD-2906-A',
+                            required: true,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -496,6 +608,7 @@ class TicketBatchCreateCard extends StatelessWidget {
                           child: _TypePicker(
                             selectedType: selectedType,
                             onChanged: onTypeChanged,
+                            required: true,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -503,6 +616,7 @@ class TicketBatchCreateCard extends StatelessWidget {
                           child: _DateField(
                             selectedDate: selectedDate,
                             onTap: onDateTap,
+                            required: true,
                           ),
                         ),
                       ],
@@ -514,8 +628,9 @@ class TicketBatchCreateCard extends StatelessWidget {
                           child: TicketingTextField(
                             controller: quantityController,
                             label: 'Quantity',
-                            hint: '100',
+                            hint: 'Ex: 100',
                             keyboardType: TextInputType.number,
+                            required: true,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -523,8 +638,10 @@ class TicketBatchCreateCard extends StatelessWidget {
                           child: TicketingTextField(
                             controller: priceController,
                             label: 'Price',
-                            hint: '75000',
+                            hint: 'Ex: 75.000',
                             keyboardType: TextInputType.number,
+                            required: true,
+                            isCurrency: true,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -532,7 +649,8 @@ class TicketBatchCreateCard extends StatelessWidget {
                           child: TicketingTextField(
                             controller: operatorController,
                             label: 'Operator',
-                            hint: 'Front Desk',
+                            hint: 'Ex: Front Desk',
+                            required: true,
                           ),
                         ),
                       ],
@@ -576,75 +694,179 @@ class TicketBatchTableCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Select a batch to review its generated ticket codes and live ticket status.',
+            'Select a batch to make it active, then review its generated ticket codes and live ticket status.',
             style: TextStyle(color: WaterparkBrand.gray, height: 1.4),
           ),
           const SizedBox(height: 14),
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF9FCFF),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE3EEF8)),
-            ),
-            child: Column(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  child: Row(
-                    children: [
-                      Expanded(flex: 2, child: TicketHeaderCell('Batch')),
-                      Expanded(child: TicketHeaderCell('Type')),
-                      Expanded(child: TicketHeaderCell('Qty')),
-                      Expanded(flex: 2, child: TicketHeaderCell('First Code')),
-                      Expanded(child: TicketHeaderCell('Status')),
-                    ],
-                  ),
+          if (batches.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FCFF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE3EEF8)),
+              ),
+              child: const Text(
+              'No ticket batches yet. Create your first batch from the form above and it will appear here.',
+                style: TextStyle(
+                  color: WaterparkBrand.gray,
+                  fontSize: 14,
+                  height: 1.5,
                 ),
-                const Divider(height: 1, color: Color(0xFFE3EEF8)),
-                for (var index = 0; index < batches.length; index++)
-                  InkWell(
-                    onTap: () => onSelectBatch(index),
-                    child: Container(
-                      color: index == selectedBatchIndex
-                          ? const Color(0xFFEFF7FF)
-                          : Colors.transparent,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: TicketBodyCell(batches[index].batchLabel),
-                          ),
-                          Expanded(
-                            child: TicketBodyCell(batches[index].type),
-                          ),
-                          Expanded(
-                            child: TicketBodyCell('${batches[index].quantity}'),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: TicketBodyCell(batches[index].firstCode),
-                          ),
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: TicketStatusPill(
-                                label: batches[index].batchStatusLabel,
-                                color: batches[index].batchStatusColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+              ),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FCFF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE3EEF8)),
+              ),
+              child: Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    child: Row(
+                      children: [
+                        Expanded(flex: 2, child: TicketHeaderCell('Batch')),
+                        Expanded(child: TicketHeaderCell('Type')),
+                        Expanded(child: TicketHeaderCell('Qty')),
+                        Expanded(flex: 2, child: TicketHeaderCell('First Code')),
+                        Expanded(child: TicketHeaderCell('Status')),
+                      ],
                     ),
                   ),
+                  const Divider(height: 1, color: Color(0xFFE3EEF8)),
+                  for (var index = 0; index < batches.length; index++)
+                    InkWell(
+                      onTap: () => onSelectBatch(index),
+                      child: Container(
+                        color: index == selectedBatchIndex
+                            ? const Color(0xFFEFF7FF)
+                            : Colors.transparent,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TicketBodyCell(batches[index].batchLabel),
+                            ),
+                            Expanded(
+                              child: TicketBodyCell(batches[index].type),
+                            ),
+                            Expanded(
+                              child: TicketBodyCell('${batches[index].quantity}'),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: TicketBodyCell(batches[index].firstCode),
+                            ),
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: TicketStatusPill(
+                                  label: batches[index].batchStatusLabel,
+                                  color: batches[index].batchStatusColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class TicketBatchDetailsPage extends StatefulWidget {
+  const TicketBatchDetailsPage({
+    required this.batch,
+    required this.onTicketStatusChanged,
+    super.key,
+  });
+
+  final TicketBatchRecord? batch;
+  final void Function(String ticketCode, TicketStatus status)
+      onTicketStatusChanged;
+
+  @override
+  State<TicketBatchDetailsPage> createState() => _TicketBatchDetailsPageState();
+}
+
+class _TicketBatchDetailsPageState extends State<TicketBatchDetailsPage> {
+  @override
+  Widget build(BuildContext context) {
+    if (widget.batch == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF4FAFF),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: WaterparkBrand.deepBlue,
+          title: const Text('Batch Details'),
+        ),
+        body: const Padding(
+          padding: EdgeInsets.all(20),
+          child: BrandSurface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Batch Details',
+                  style: TextStyle(
+                    color: WaterparkBrand.deepBlue,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'No batch is selected yet. Return to the ticketing page and choose a batch to see its tickets.',
+                  style: TextStyle(
+                    color: WaterparkBrand.gray,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
               ],
             ),
           ),
-        ],
+        ),
+      );
+    }
+
+    final currentBatch = widget.batch!;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4FAFF),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: WaterparkBrand.deepBlue,
+        title: Text(currentBatch.batchLabel),
+      ),
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: TicketBatchDetailCard(
+            batch: currentBatch,
+            onTicketStatusChanged: (ticketCode, status) {
+              setState(() {
+                widget.onTicketStatusChanged(ticketCode, status);
+              });
+            },
+          ),
+        ),
       ),
     );
   }
@@ -663,8 +885,6 @@ class TicketBatchDetailCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final previewTickets = batch.tickets.take(6).toList();
-
     return BrandSurface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -764,48 +984,71 @@ class TicketBatchDetailCard extends StatelessWidget {
                 color: WaterparkBrand.warning,
               ),
               TicketStatusPill(
-                label: 'Rp ${batch.price}',
+                label: _formatRupiah(batch.price),
                 color: WaterparkBrand.primaryBlue,
               ),
             ],
           ),
           const SizedBox(height: 18),
-          const Text(
-            'Generated Ticket Preview',
+          Text(
+            'Batch Tickets (${batch.tickets.length})',
             style: TextStyle(
               color: WaterparkBrand.deepBlue,
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 10),
-          for (final ticket in previewTickets) ...[
-            TicketPreviewRow(
-              ticket: ticket,
-              onUse: () => onTicketStatusChanged(ticket.code, TicketStatus.used),
-              onReset: () =>
-                  onTicketStatusChanged(ticket.code, TicketStatus.ready),
-              onVoid: () =>
-                  onTicketStatusChanged(ticket.code, TicketStatus.voided),
+          const SizedBox(height: 6),
+          const Text(
+            'Each ticket below belongs to this batch and has its own QR. The card uses a ticket-style artwork placeholder for now, so we can replace it later with the real printed ticket design.',
+            style: TextStyle(
+              color: WaterparkBrand.gray,
+              fontSize: 13,
+              height: 1.4,
             ),
-            const SizedBox(height: 10),
-          ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 760,
+            child: ListView.separated(
+              itemCount: batch.tickets.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final ticket = batch.tickets[index];
+                return TicketVisualCard(
+                  batch: batch,
+                  ticket: ticket,
+                  ticketNumber: index + 1,
+                  onUse: () =>
+                      onTicketStatusChanged(ticket.code, TicketStatus.used),
+                  onReset: () =>
+                      onTicketStatusChanged(ticket.code, TicketStatus.ready),
+                  onVoid: () =>
+                      onTicketStatusChanged(ticket.code, TicketStatus.voided),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class TicketPreviewRow extends StatelessWidget {
-  const TicketPreviewRow({
+class TicketVisualCard extends StatelessWidget {
+  const TicketVisualCard({
+    required this.batch,
     required this.ticket,
+    required this.ticketNumber,
     required this.onUse,
     required this.onReset,
     required this.onVoid,
     super.key,
   });
 
+  final TicketBatchRecord batch;
   final TicketRecord ticket;
+  final int ticketNumber;
   final VoidCallback onUse;
   final VoidCallback onReset;
   final VoidCallback onVoid;
@@ -822,65 +1065,357 @@ class TicketPreviewRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  ticket.code,
-                  style: const TextStyle(
-                    color: WaterparkBrand.deepBlue,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 560;
+              final ticketArtwork = _TicketArtworkCard(
+                batch: batch,
+                ticket: ticket,
+                ticketNumber: ticketNumber,
+              );
+
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ticketArtwork,
+                    const SizedBox(height: 12),
+                    _TicketMetaBlock(
+                      ticket: ticket,
+                      onUse: onUse,
+                      onReset: onReset,
+                      onVoid: onVoid,
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 5, child: ticketArtwork),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    flex: 3,
+                    child: _TicketMetaBlock(
+                      ticket: ticket,
+                      onUse: onUse,
+                      onReset: onReset,
+                      onVoid: onVoid,
+                    ),
                   ),
-                ),
-              ),
-              TicketStatusPill(
-                label: ticket.status.label,
-                color: ticket.status.color,
-              ),
-            ],
+                ],
+              );
+            },
           ),
-          const SizedBox(height: 6),
-          Text(
-            ticket.scannedAt == null
-                ? 'Not scanned yet'
-                : 'Scanned ${_formatDateTime(ticket.scannedAt!)}',
-            style: const TextStyle(
-              color: WaterparkBrand.gray,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+        ],
+      ),
+    );
+  }
+}
+
+class _TicketArtworkCard extends StatelessWidget {
+  const _TicketArtworkCard({
+    required this.batch,
+    required this.ticket,
+    required this.ticketNumber,
+  });
+
+  final TicketBatchRecord batch;
+  final TicketRecord ticket;
+  final int ticketNumber;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0E7DCC), Color(0xFF49B2F0)],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x220066B6),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: -14,
+            right: 120,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _TicketActionButton(
-                icon: Icons.verified_rounded,
-                tooltip: 'Mark Used',
-                color: WaterparkBrand.success,
-                onPressed:
-                    ticket.status == TicketStatus.used ? null : onUse,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Image.asset(
+                          'logo waterpark.png',
+                          height: 38,
+                          fit: BoxFit.contain,
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            batch.type,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Puri Nirwana Waterpark Ticket',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      ticket.code,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        _TicketArtworkMeta(
+                          label: 'Batch',
+                          value: batch.batchLabel,
+                        ),
+                        _TicketArtworkMeta(
+                          label: 'Ticket No.',
+                          value: '#${ticketNumber.toString().padLeft(3, '0')}',
+                        ),
+                        _TicketArtworkMeta(
+                          label: 'Visit Date',
+                          value: _formatDate(batch.visitDate),
+                        ),
+                        _TicketArtworkMeta(
+                          label: 'Price',
+                          value: _formatRupiah(batch.price),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.20),
+                        ),
+                      ),
+                      child: const Text(
+                        'Ticket artwork placeholder. Replace this visual with the real ticket design image later if needed.',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              _TicketActionButton(
-                icon: Icons.restart_alt_rounded,
-                tooltip: 'Reset To Ready',
-                color: WaterparkBrand.primaryBlue,
-                onPressed:
-                    ticket.status == TicketStatus.ready ? null : onReset,
-              ),
-              _TicketActionButton(
-                icon: Icons.block_rounded,
-                tooltip: 'Void Ticket',
-                color: WaterparkBrand.warning,
-                onPressed:
-                    ticket.status == TicketStatus.voided ? null : onVoid,
+              const SizedBox(width: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: 116,
+                      height: 116,
+                      child: QrImageView(
+                        data: ticket.code,
+                        backgroundColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'QR Placeholder',
+                      style: TextStyle(
+                        color: WaterparkBrand.gray,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TicketArtworkMeta extends StatelessWidget {
+  const _TicketArtworkMeta({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TicketMetaBlock extends StatelessWidget {
+  const _TicketMetaBlock({
+    required this.ticket,
+    required this.onUse,
+    required this.onReset,
+    required this.onVoid,
+  });
+
+  final TicketRecord ticket;
+  final VoidCallback onUse;
+  final VoidCallback onReset;
+  final VoidCallback onVoid;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                ticket.code,
+                style: const TextStyle(
+                  color: WaterparkBrand.deepBlue,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            TicketStatusPill(
+              label: ticket.status.label,
+              color: ticket.status.color,
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          ticket.scannedAt == null
+              ? 'Not scanned yet'
+              : 'Scanned ${_formatDateTime(ticket.scannedAt!)}',
+          style: const TextStyle(
+            color: WaterparkBrand.gray,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Ticket Actions',
+          style: TextStyle(
+            color: WaterparkBrand.deepBlue,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _TicketActionButton(
+              icon: Icons.verified_rounded,
+              tooltip: 'Mark Used',
+              color: WaterparkBrand.success,
+              onPressed: ticket.status == TicketStatus.used ? null : onUse,
+            ),
+            _TicketActionButton(
+              icon: Icons.restart_alt_rounded,
+              tooltip: 'Reset To Ready',
+              color: WaterparkBrand.primaryBlue,
+              onPressed: ticket.status == TicketStatus.ready ? null : onReset,
+            ),
+            _TicketActionButton(
+              icon: Icons.block_rounded,
+              tooltip: 'Void Ticket',
+              color: WaterparkBrand.warning,
+              onPressed: ticket.status == TicketStatus.voided ? null : onVoid,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -934,18 +1469,20 @@ class _TypePicker extends StatelessWidget {
   const _TypePicker({
     required this.selectedType,
     required this.onChanged,
+    this.required = false,
   });
 
   final String selectedType;
   final ValueChanged<String> onChanged;
+  final bool required;
 
   @override
   Widget build(BuildContext context) {
     const types = ['Weekday', 'Weekend', 'Group', 'Promo'];
 
     return DropdownButtonFormField<String>(
-      value: selectedType,
-      decoration: _ticketInputDecoration('Ticket Type'),
+      initialValue: selectedType,
+      decoration: _ticketInputDecoration('Ticket Type', required: required),
       items: [
         for (final type in types)
           DropdownMenuItem<String>(
@@ -966,10 +1503,12 @@ class _DateField extends StatelessWidget {
   const _DateField({
     required this.selectedDate,
     required this.onTap,
+    this.required = false,
   });
 
   final DateTime selectedDate;
   final VoidCallback onTap;
+  final bool required;
 
   @override
   Widget build(BuildContext context) {
@@ -977,7 +1516,7 @@ class _DateField extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: InputDecorator(
-        decoration: _ticketInputDecoration('Visit Date'),
+        decoration: _ticketInputDecoration('Visit Date', required: required),
         child: Row(
           children: [
             Expanded(
@@ -1003,6 +1542,8 @@ class TicketingTextField extends StatelessWidget {
     required this.label,
     required this.hint,
     this.keyboardType,
+    this.required = false,
+    this.isCurrency = false,
     super.key,
   });
 
@@ -1010,19 +1551,41 @@ class TicketingTextField extends StatelessWidget {
   final String label;
   final String hint;
   final TextInputType? keyboardType;
+  final bool required;
+  final bool isCurrency;
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
-      decoration: _ticketInputDecoration(label).copyWith(hintText: hint),
+      decoration: _ticketInputDecoration(label, required: required).copyWith(
+        hintText: hint,
+        prefixText: isCurrency ? 'Rp ' : null,
+        hintStyle: const TextStyle(
+          color: Color(0xFF9FB2C5),
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        prefixStyle: const TextStyle(
+          color: Color(0xFF9FB2C5),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      inputFormatters: [
+        if (keyboardType == TextInputType.number && !isCurrency)
+          FilteringTextInputFormatter.digitsOnly,
+        if (isCurrency) _RupiahTextInputFormatter(),
+      ],
       validator: (value) {
         if (value == null || value.trim().isEmpty) {
           return 'Required';
         }
         if (keyboardType == TextInputType.number) {
-          final parsedValue = int.tryParse(value.trim());
+          final parsedValue = isCurrency
+              ? _parseCurrency(value)
+              : int.tryParse(value.trim());
           if (parsedValue == null) {
             return 'Number only';
           }
@@ -1098,9 +1661,29 @@ class TicketBodyCell extends StatelessWidget {
   }
 }
 
-InputDecoration _ticketInputDecoration(String label) {
+InputDecoration _ticketInputDecoration(String label, {bool required = false}) {
   return InputDecoration(
-    labelText: label,
+    label: RichText(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(
+          color: WaterparkBrand.gray,
+          fontSize: 14,
+        ),
+        children: required
+            ? const [
+                TextSpan(
+                  text: ' *',
+                  style: TextStyle(
+                    color: Color(0xFFE04F5F),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ]
+            : const [],
+      ),
+    ),
+    floatingLabelBehavior: FloatingLabelBehavior.always,
     filled: true,
     fillColor: const Color(0xFFF8FBFF),
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -1113,6 +1696,51 @@ InputDecoration _ticketInputDecoration(String label) {
       borderSide: const BorderSide(color: Color(0xFFDCEAF7)),
     ),
   );
+}
+
+int? _parseCurrency(String value) {
+  final digitsOnly = value.replaceAll(RegExp(r'[^0-9]'), '');
+  if (digitsOnly.isEmpty) {
+    return null;
+  }
+  return int.tryParse(digitsOnly);
+}
+
+String _formatRupiahDigits(String digits) {
+  if (digits.isEmpty) {
+    return '';
+  }
+
+  final reversed = digits.split('').reversed.toList();
+  final buffer = StringBuffer();
+  for (var index = 0; index < reversed.length; index++) {
+    if (index > 0 && index % 3 == 0) {
+      buffer.write('.');
+    }
+    buffer.write(reversed[index]);
+  }
+
+  return buffer.toString().split('').reversed.join();
+}
+
+String _formatRupiah(int amount) {
+  return 'Rp ${_formatRupiahDigits(amount.toString())}';
+}
+
+class _RupiahTextInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digitsOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final formatted = _formatRupiahDigits(digitsOnly);
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
 }
 
 String _formatDate(DateTime date) {
