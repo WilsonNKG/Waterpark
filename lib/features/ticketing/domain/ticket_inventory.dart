@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:waterpark/core/theme/waterpark_brand.dart';
@@ -25,11 +26,13 @@ extension TicketStatusX on TicketStatus {
 
 class TicketRecord {
   const TicketRecord({
+    required this.ticketNumber,
     required this.code,
     required this.status,
     this.scannedAt,
   });
 
+  final int ticketNumber;
   final String code;
   final TicketStatus status;
   final DateTime? scannedAt;
@@ -40,6 +43,7 @@ class TicketRecord {
   }) {
     final nextStatus = status ?? this.status;
     return TicketRecord(
+      ticketNumber: ticketNumber,
       code: code,
       status: nextStatus,
       scannedAt: nextStatus == TicketStatus.ready
@@ -67,17 +71,8 @@ class TicketBatchRecord {
     required int price,
     required DateTime visitDate,
     required String operator,
+    int startingTicketNumber = 1,
   }) {
-    final prefix = switch (type) {
-      'Weekday' => 'WKD',
-      'Weekend' => 'WND',
-      'Group' => 'GRP',
-      'Promo' => 'PRM',
-      _ => 'TKT',
-    };
-    final datePart =
-        '${visitDate.year}${visitDate.month.toString().padLeft(2, '0')}${visitDate.day.toString().padLeft(2, '0')}';
-
     return TicketBatchRecord(
       batchLabel: batchLabel,
       type: type,
@@ -88,7 +83,12 @@ class TicketBatchRecord {
       tickets: List.generate(
         quantity,
         (index) => TicketRecord(
-          code: '$prefix-$datePart-${(index + 1).toString().padLeft(4, '0')}',
+          ticketNumber: startingTicketNumber + index,
+          code: _buildTicketCode(
+            type: type,
+            visitDate: visitDate,
+            ticketNumber: startingTicketNumber + index,
+          ),
           status: TicketStatus.ready,
         ),
       ),
@@ -132,6 +132,23 @@ class TicketBatchRecord {
   }
 }
 
+String _buildTicketCode({
+  required String type,
+  required DateTime visitDate,
+  required int ticketNumber,
+}) {
+  final prefix = switch (type) {
+    'Weekday' => 'WKD',
+    'Weekend' => 'WND',
+    'Group' => 'GRP',
+    'Promo' => 'PRM',
+    _ => 'TKT',
+  };
+  final datePart =
+      '${visitDate.year}${visitDate.month.toString().padLeft(2, '0')}${visitDate.day.toString().padLeft(2, '0')}';
+  return '$prefix-$datePart-${ticketNumber.toString().padLeft(4, '0')}';
+}
+
 class TicketLookup {
   const TicketLookup({
     required this.batch,
@@ -171,19 +188,32 @@ class TicketRedeemResult {
 abstract class TicketRepository {
   Future<List<TicketBatchRecord>> fetchBatches();
   Future<void> createBatch(TicketBatchRecord batch);
+  Future<void> registerExistingTickets(TicketBatchRecord batch);
   Future<bool> updateTicketStatus(
     String ticketCode,
     TicketStatus status, {
     DateTime? scannedAt,
   });
   Future<TicketRedeemResult> redeemTicket(String ticketCode);
+  Stream<void> watchInventoryChanges();
+  void dispose();
 }
 
 class TicketInventory extends ChangeNotifier {
-  TicketInventory({TicketRepository? repository}) : _repository = repository;
+  TicketInventory({TicketRepository? repository}) : _repository = repository {
+    if (_repository != null) {
+      _inventoryChangesSubscription = _repository.watchInventoryChanges().listen((
+        _,
+      ) {
+        _scheduleBackgroundRefresh();
+      });
+    }
+  }
 
   final TicketRepository? _repository;
   final List<TicketBatchRecord> _batches = [];
+  StreamSubscription<void>? _inventoryChangesSubscription;
+  Timer? _reloadDebounce;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -214,6 +244,30 @@ class TicketInventory extends ChangeNotifier {
     }
   }
 
+  Future<void> _reloadBatchesSilently() async {
+    if (_repository == null || _isLoading) {
+      return;
+    }
+
+    try {
+      final fetchedBatches = await _repository.fetchBatches();
+      _batches
+        ..clear()
+        ..addAll(fetchedBatches);
+      _errorMessage = null;
+      notifyListeners();
+    } catch (_) {
+      // Keep the last known ticket data if a background refresh fails.
+    }
+  }
+
+  void _scheduleBackgroundRefresh() {
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 350), () {
+      _reloadBatchesSilently();
+    });
+  }
+
   Future<void> createBatch({
     required String batchLabel,
     required String type,
@@ -233,9 +287,59 @@ class TicketInventory extends ChangeNotifier {
 
     if (_repository != null) {
       await _repository.createBatch(batch);
+      await _reloadBatchesSilently();
+      return;
     }
 
     _batches.insert(0, batch);
+    notifyListeners();
+  }
+
+  Future<void> registerExistingTickets({
+    required String batchLabel,
+    required String type,
+    required int price,
+    required DateTime visitDate,
+    required String operator,
+    required int startingTicketNumber,
+    required int endingTicketNumber,
+  }) async {
+    final quantity = (endingTicketNumber - startingTicketNumber) + 1;
+    final batch = TicketBatchRecord.create(
+      batchLabel: batchLabel,
+      type: type,
+      quantity: quantity,
+      price: price,
+      visitDate: visitDate,
+      operator: operator,
+      startingTicketNumber: startingTicketNumber,
+    );
+
+    if (_repository != null) {
+      await _repository.registerExistingTickets(batch);
+      await _reloadBatchesSilently();
+      return;
+    }
+
+    final existingIndex = _batches.indexWhere(
+      (existingBatch) => existingBatch.batchLabel == batch.batchLabel,
+    );
+    if (existingIndex == -1) {
+      _batches.insert(0, batch);
+    } else {
+      final existingBatch = _batches[existingIndex];
+      final mergedTickets = [...existingBatch.tickets, ...batch.tickets]
+        ..sort((a, b) => a.ticketNumber.compareTo(b.ticketNumber));
+      _batches[existingIndex] = TicketBatchRecord(
+        batchLabel: existingBatch.batchLabel,
+        type: batch.type,
+        quantity: mergedTickets.length,
+        price: batch.price,
+        visitDate: batch.visitDate,
+        operator: batch.operator,
+        tickets: mergedTickets,
+      );
+    }
     notifyListeners();
   }
 
@@ -272,16 +376,13 @@ class TicketInventory extends ChangeNotifier {
       if (!updated) {
         return false;
       }
+      await _reloadBatchesSilently();
+      return true;
     } else if (lookup == null) {
       return false;
     }
 
-    final nextLookup = lookup ?? findTicket(ticketCode);
-    if (nextLookup == null) {
-      return true;
-    }
-
-    nextLookup.batch.tickets[nextLookup.ticketIndex] = nextLookup.ticket.copyWith(
+    lookup.batch.tickets[lookup.ticketIndex] = lookup.ticket.copyWith(
       status: status,
       scannedAt: status == TicketStatus.used ? (scannedAt ?? DateTime.now()) : null,
     );
@@ -292,6 +393,7 @@ class TicketInventory extends ChangeNotifier {
   Future<TicketRedeemResult> redeemTicket(String ticketCode) async {
     if (_repository != null) {
       final result = await _repository.redeemTicket(ticketCode);
+      await _reloadBatchesSilently();
       final matchedCode = result.ticketCode ?? ticketCode;
       final lookup = findTicket(matchedCode);
       if (lookup != null && result.ticketStatus != null) {
@@ -366,6 +468,14 @@ class TicketInventory extends ChangeNotifier {
           ticketType: lookup.batch.type,
         ),
     };
+  }
+
+  @override
+  void dispose() {
+    _reloadDebounce?.cancel();
+    _inventoryChangesSubscription?.cancel();
+    _repository?.dispose();
+    super.dispose();
   }
 }
 

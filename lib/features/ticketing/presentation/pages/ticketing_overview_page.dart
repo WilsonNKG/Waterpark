@@ -14,13 +14,21 @@ class TicketingOverviewPage extends StatefulWidget {
 
 class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
   final _formKey = GlobalKey<FormState>();
+  final _legacyFormKey = GlobalKey<FormState>();
   final _batchLabelController = TextEditingController();
   final _priceController = TextEditingController();
   final _quantityController = TextEditingController();
   final _operatorController = TextEditingController();
+  final _legacyBatchLabelController = TextEditingController();
+  final _legacyPriceController = TextEditingController();
+  final _legacyOperatorController = TextEditingController();
+  final _startingTicketNumberController = TextEditingController();
+  final _endingTicketNumberController = TextEditingController();
 
   String _selectedType = 'Weekday';
   DateTime _selectedDate = DateTime.now();
+  String _legacySelectedType = 'Weekday';
+  DateTime _legacySelectedDate = DateTime.now();
   int _selectedBatchIndex = 0;
 
   @override
@@ -29,6 +37,11 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
     _priceController.dispose();
     _quantityController.dispose();
     _operatorController.dispose();
+    _legacyBatchLabelController.dispose();
+    _legacyPriceController.dispose();
+    _legacyOperatorController.dispose();
+    _startingTicketNumberController.dispose();
+    _endingTicketNumberController.dispose();
     super.dispose();
   }
 
@@ -122,6 +135,26 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
                           onCreateBatch: _createBatch,
                         ),
                         const SizedBox(height: 16),
+                        LegacyTicketImportCard(
+                          formKey: _legacyFormKey,
+                          batchLabelController: _legacyBatchLabelController,
+                          priceController: _legacyPriceController,
+                          operatorController: _legacyOperatorController,
+                          startingTicketNumberController:
+                              _startingTicketNumberController,
+                          endingTicketNumberController:
+                              _endingTicketNumberController,
+                          selectedType: _legacySelectedType,
+                          selectedDate: _legacySelectedDate,
+                          onTypeChanged: (value) {
+                            setState(() {
+                              _legacySelectedType = value;
+                            });
+                          },
+                          onDateTap: _pickLegacyVisitDate,
+                          onRegisterTickets: _registerExistingTickets,
+                        ),
+                        const SizedBox(height: 16),
                         TicketBatchTableCard(
                           batches: batches,
                           selectedBatchIndex: safeSelectedIndex,
@@ -153,6 +186,26 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
                               },
                               onDateTap: _pickVisitDate,
                               onCreateBatch: _createBatch,
+                            ),
+                            const SizedBox(height: 16),
+                            LegacyTicketImportCard(
+                              formKey: _legacyFormKey,
+                              batchLabelController: _legacyBatchLabelController,
+                              priceController: _legacyPriceController,
+                              operatorController: _legacyOperatorController,
+                              startingTicketNumberController:
+                                  _startingTicketNumberController,
+                              endingTicketNumberController:
+                                  _endingTicketNumberController,
+                              selectedType: _legacySelectedType,
+                              selectedDate: _legacySelectedDate,
+                              onTypeChanged: (value) {
+                                setState(() {
+                                  _legacySelectedType = value;
+                                });
+                              },
+                              onDateTap: _pickLegacyVisitDate,
+                              onRegisterTickets: _registerExistingTickets,
                             ),
                             const SizedBox(height: 16),
                             TicketBatchTableCard(
@@ -188,6 +241,23 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
 
     setState(() {
       _selectedDate = pickedDate;
+    });
+  }
+
+  Future<void> _pickLegacyVisitDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _legacySelectedDate,
+      firstDate: DateTime(2025),
+      lastDate: DateTime(2030),
+    );
+
+    if (pickedDate == null) {
+      return;
+    }
+
+    setState(() {
+      _legacySelectedDate = pickedDate;
     });
   }
 
@@ -243,6 +313,76 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
 
   Future<void> _updateTicketStatus(String ticketCode, TicketStatus status) async {
     await TicketInventoryScope.of(context).updateTicketStatus(ticketCode, status);
+  }
+
+  Future<void> _registerExistingTickets() async {
+    if (!_legacyFormKey.currentState!.validate()) {
+      return;
+    }
+
+    final inventory = TicketInventoryScope.of(context);
+    final batchLabel = _legacyBatchLabelController.text.trim().toUpperCase();
+    final price = _parseCurrency(_legacyPriceController.text)!;
+    final startingTicketNumber = int.parse(
+      _startingTicketNumberController.text.trim(),
+    );
+    final endingTicketNumber = int.parse(
+      _endingTicketNumberController.text.trim(),
+    );
+
+    if (endingTicketNumber < startingTicketNumber) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ending ticket number must be greater than or equal to the starting number.'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await inventory.registerExistingTickets(
+        batchLabel: batchLabel,
+        type: _legacySelectedType,
+        price: price,
+        visitDate: _legacySelectedDate,
+        operator: _legacyOperatorController.text.trim(),
+        startingTicketNumber: startingTicketNumber,
+        endingTicketNumber: endingTicketNumber,
+      );
+
+      setState(() {
+        _selectedBatchIndex = 0;
+        _legacyBatchLabelController.clear();
+        _legacyPriceController.clear();
+        _legacyOperatorController.clear();
+        _startingTicketNumberController.clear();
+        _endingTicketNumberController.clear();
+      });
+
+      if (!mounted) {
+        return;
+      }
+
+      final registeredCount =
+          (endingTicketNumber - startingTicketNumber) + 1;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Registered $registeredCount existing paper tickets for $batchLabel.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not register existing tickets. $error'),
+        ),
+      );
+    }
   }
 
   Future<void> _openBatchDetails(int index) async {
@@ -713,6 +853,223 @@ class TicketBatchCreateCard extends StatelessWidget {
   }
 }
 
+class LegacyTicketImportCard extends StatelessWidget {
+  const LegacyTicketImportCard({
+    required this.formKey,
+    required this.batchLabelController,
+    required this.priceController,
+    required this.operatorController,
+    required this.startingTicketNumberController,
+    required this.endingTicketNumberController,
+    required this.selectedType,
+    required this.selectedDate,
+    required this.onTypeChanged,
+    required this.onDateTap,
+    required this.onRegisterTickets,
+    super.key,
+  });
+
+  final GlobalKey<FormState> formKey;
+  final TextEditingController batchLabelController;
+  final TextEditingController priceController;
+  final TextEditingController operatorController;
+  final TextEditingController startingTicketNumberController;
+  final TextEditingController endingTicketNumberController;
+  final String selectedType;
+  final DateTime selectedDate;
+  final ValueChanged<String> onTypeChanged;
+  final VoidCallback onDateTap;
+  final Future<void> Function() onRegisterTickets;
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandSurface(
+      child: Form(
+        key: formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Register Existing Paper Tickets',
+                        style: TextStyle(
+                          color: WaterparkBrand.deepBlue,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Use this for old printed tickets you still want to accept. The app will store the exact ticket numbers and generate matching QR identities for scanning.',
+                        style: TextStyle(
+                          color: WaterparkBrand.gray,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FilledButton.tonalIcon(
+                  onPressed: () {
+                    onRegisterTickets();
+                  },
+                  icon: const Icon(Icons.qr_code_2_rounded),
+                  label: const Text('Register Tickets'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final stacked = constraints.maxWidth < 900;
+                if (stacked) {
+                  return Column(
+                    children: [
+                      TicketingTextField(
+                        controller: batchLabelController,
+                        label: 'Batch Label',
+                        hint: 'Ex: WKD-20260701',
+                        required: true,
+                      ),
+                      const SizedBox(height: 12),
+                      _TypePicker(
+                        selectedType: selectedType,
+                        onChanged: onTypeChanged,
+                        required: true,
+                      ),
+                      const SizedBox(height: 12),
+                      _DateField(
+                        selectedDate: selectedDate,
+                        onTap: onDateTap,
+                        required: true,
+                      ),
+                      const SizedBox(height: 12),
+                      TicketingTextField(
+                        controller: priceController,
+                        label: 'Price',
+                        hint: 'Ex: 75.000',
+                        keyboardType: TextInputType.number,
+                        required: true,
+                        isCurrency: true,
+                      ),
+                      const SizedBox(height: 12),
+                      TicketingTextField(
+                        controller: operatorController,
+                        label: 'Operator',
+                        hint: 'Ex: Front Desk',
+                        required: true,
+                      ),
+                      const SizedBox(height: 12),
+                      TicketingTextField(
+                        controller: startingTicketNumberController,
+                        label: 'Starting Ticket No.',
+                        hint: 'Ex: 1',
+                        keyboardType: TextInputType.number,
+                        required: true,
+                      ),
+                      const SizedBox(height: 12),
+                      TicketingTextField(
+                        controller: endingTicketNumberController,
+                        label: 'Ending Ticket No.',
+                        hint: 'Ex: 50',
+                        keyboardType: TextInputType.number,
+                        required: true,
+                      ),
+                    ],
+                  );
+                }
+
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TicketingTextField(
+                            controller: batchLabelController,
+                            label: 'Batch Label',
+                            hint: 'Ex: WKD-20260701',
+                            required: true,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _TypePicker(
+                            selectedType: selectedType,
+                            onChanged: onTypeChanged,
+                            required: true,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _DateField(
+                            selectedDate: selectedDate,
+                            onTap: onDateTap,
+                            required: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TicketingTextField(
+                            controller: priceController,
+                            label: 'Price',
+                            hint: 'Ex: 75.000',
+                            keyboardType: TextInputType.number,
+                            required: true,
+                            isCurrency: true,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TicketingTextField(
+                            controller: operatorController,
+                            label: 'Operator',
+                            hint: 'Ex: Front Desk',
+                            required: true,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TicketingTextField(
+                            controller: startingTicketNumberController,
+                            label: 'Starting Ticket No.',
+                            hint: 'Ex: 1',
+                            keyboardType: TextInputType.number,
+                            required: true,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TicketingTextField(
+                            controller: endingTicketNumberController,
+                            label: 'Ending Ticket No.',
+                            hint: 'Ex: 50',
+                            keyboardType: TextInputType.number,
+                            required: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class TicketBatchTableCard extends StatelessWidget {
   const TicketBatchTableCard({
     required this.batches,
@@ -1066,7 +1423,7 @@ class TicketBatchDetailCard extends StatelessWidget {
                 return TicketVisualCard(
                   batch: batch,
                   ticket: ticket,
-                  ticketNumber: index + 1,
+                  ticketNumber: ticket.ticketNumber,
                   onUse: () =>
                       onTicketStatusChanged(ticket.code, TicketStatus.used),
                   onReset: () =>

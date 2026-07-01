@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -257,12 +259,31 @@ class _QrScanPageState extends State<QrScanPage> {
       _isProcessingInput = true;
     });
 
-    final result = rawValue.startsWith('STAFF|')
-        ? _validator.validate(
-            rawValue: rawValue,
-            staffMembers: _staffMembers,
-          )
-        : await _validateTicketScan(rawValue);
+    late final QrScanResult result;
+    try {
+      result = rawValue.startsWith('STAFF|')
+          ? _validator.validate(
+              rawValue: rawValue,
+              staffMembers: _staffMembers,
+            )
+          : await _validateTicketScan(rawValue);
+    } on TimeoutException {
+      result = QrScanResult(
+        status: QrScanStatus.scanError,
+        title: 'Verification Timed Out',
+        message:
+            'The ticket check took too long. Please confirm the internet connection and try scanning again.',
+        rawValue: rawValue,
+      );
+    } catch (error) {
+      result = QrScanResult(
+        status: QrScanStatus.scanError,
+        title: 'Verification Failed',
+        message:
+            'The system could not verify this scan just now. $error',
+        rawValue: rawValue,
+      );
+    }
 
     await _playScanSound(result.status);
 
@@ -287,7 +308,8 @@ class _QrScanPageState extends State<QrScanPage> {
       QrScanStatus.unknownTicket ||
       QrScanStatus.unknownStaff ||
       QrScanStatus.invalidFormat ||
-      QrScanStatus.tamperedData => 'audio/qr_failure.wav',
+      QrScanStatus.tamperedData ||
+      QrScanStatus.scanError => 'audio/qr_failure.wav',
     };
 
     if (assetPath == null) {
@@ -304,7 +326,9 @@ class _QrScanPageState extends State<QrScanPage> {
 
   Future<QrScanResult> _validateTicketScan(String rawValue) async {
     final inventory = TicketInventoryScope.of(context);
-    final redeemResult = await inventory.redeemTicket(rawValue.trim());
+    final redeemResult = await inventory
+        .redeemTicket(rawValue.trim())
+        .timeout(const Duration(seconds: 8));
     final lookup = redeemResult.lookup;
 
     return switch (redeemResult.status) {
@@ -414,6 +438,7 @@ class ScanSummaryBar extends StatelessWidget {
       QrScanStatus.unknownStaff => 'Unknown',
       QrScanStatus.invalidFormat => 'Invalid',
       QrScanStatus.tamperedData => 'Mismatch',
+      QrScanStatus.scanError => 'Error',
     };
   }
 
@@ -428,6 +453,7 @@ class ScanSummaryBar extends StatelessWidget {
       QrScanStatus.unknownStaff => WaterparkBrand.warning,
       QrScanStatus.invalidFormat => WaterparkBrand.accentRed,
       QrScanStatus.tamperedData => WaterparkBrand.accentRed,
+      QrScanStatus.scanError => WaterparkBrand.accentRed,
     };
   }
 }
@@ -752,6 +778,7 @@ class ScanResultCard extends StatelessWidget {
       QrScanStatus.unknownStaff => WaterparkBrand.warning,
       QrScanStatus.invalidFormat => WaterparkBrand.accentRed,
       QrScanStatus.tamperedData => WaterparkBrand.accentRed,
+      QrScanStatus.scanError => WaterparkBrand.accentRed,
     };
 
     return BrandSurface(

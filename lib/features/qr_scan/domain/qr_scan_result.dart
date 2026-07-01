@@ -10,6 +10,7 @@ enum QrScanStatus {
   unknownStaff,
   invalidFormat,
   tamperedData,
+  scanError,
 }
 
 class QrScanResult {

@@ -105,9 +105,9 @@ declare
 begin
   select *
   into v_ticket
-  from public.tickets
-  where qr_payload = btrim(p_scanned_code)
-     or ticket_code = btrim(p_scanned_code)
+  from public.tickets as t
+  where t.qr_payload = btrim(p_scanned_code)
+     or t.ticket_code = btrim(p_scanned_code)
   for update;
 
   if not found then
@@ -145,8 +145,8 @@ begin
 
   select *
   into v_batch
-  from public.ticket_batches
-  where id = v_ticket.batch_id;
+  from public.ticket_batches as b
+  where b.id = v_ticket.batch_id;
 
   if v_ticket.status = 'ready' then
     update public.tickets

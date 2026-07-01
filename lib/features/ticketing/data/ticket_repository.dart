@@ -1,42 +1,42 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:waterpark/features/ticketing/domain/ticket_inventory.dart';
 
 class SupabaseTicketRepository implements TicketRepository {
-  SupabaseTicketRepository(this._client);
+  SupabaseTicketRepository(this._client) {
+    _inventoryChannel = _client
+        .channel('public:ticket_inventory')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _batchesTable,
+          callback: (_) => _inventoryChangesController.add(null),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _ticketsTable,
+          callback: (_) => _inventoryChangesController.add(null),
+        )
+        .subscribe();
+  }
 
   final SupabaseClient _client;
   static const _batchesTable = 'ticket_batches';
   static const _ticketsTable = 'tickets';
+  final StreamController<void> _inventoryChangesController =
+      StreamController<void>.broadcast();
+  late final RealtimeChannel _inventoryChannel;
 
   @override
   Future<void> createBatch(TicketBatchRecord batch) async {
-    final batchRow = await _client
-        .from(_batchesTable)
-        .insert({
-          'batch_label': batch.batchLabel,
-          'ticket_type': batch.type,
-          'visit_date': batch.visitDate.toIso8601String().split('T').first,
-          'quantity': batch.quantity,
-          'price': batch.price,
-          'operator': batch.operator,
-        })
-        .select('id')
-        .single();
+    await _saveBatchWithTickets(batch, allowExistingBatch: false);
+  }
 
-    final batchId = batchRow['id'] as String;
-    final ticketRows = [
-      for (var index = 0; index < batch.tickets.length; index++)
-        {
-          'batch_id': batchId,
-          'ticket_number': index + 1,
-          'ticket_code': batch.tickets[index].code,
-          'qr_payload': batch.tickets[index].code,
-          'status': _statusToDb(batch.tickets[index].status),
-          'scanned_at': batch.tickets[index].scannedAt?.toIso8601String(),
-        },
-    ];
-
-    await _client.from(_ticketsTable).insert(ticketRows);
+  @override
+  Future<void> registerExistingTickets(TicketBatchRecord batch) async {
+    await _saveBatchWithTickets(batch, allowExistingBatch: true);
   }
 
   @override
@@ -65,13 +65,14 @@ class SupabaseTicketRepository implements TicketRepository {
       return TicketBatchRecord(
         batchLabel: typedRow['batch_label'] as String,
         type: typedRow['ticket_type'] as String,
-        quantity: typedRow['quantity'] as int,
+        quantity: batchTickets.length,
         price: typedRow['price'] as int,
         visitDate: DateTime.parse(typedRow['visit_date'] as String),
         operator: typedRow['operator'] as String,
         tickets: batchTickets
             .map(
               (ticketRow) => TicketRecord(
+                ticketNumber: ticketRow['ticket_number'] as int,
                 code: ticketRow['ticket_code'] as String,
                 status: _statusFromDb(ticketRow['status'] as String),
                 scannedAt: ticketRow['scanned_at'] == null
@@ -153,6 +154,84 @@ class SupabaseTicketRepository implements TicketRepository {
         .select('ticket_code');
 
     return updatedRows.isNotEmpty;
+  }
+
+  @override
+  Stream<void> watchInventoryChanges() => _inventoryChangesController.stream;
+
+  @override
+  void dispose() {
+    _inventoryChangesController.close();
+    _client.removeChannel(_inventoryChannel);
+  }
+}
+
+extension on SupabaseTicketRepository {
+  Future<void> _saveBatchWithTickets(
+    TicketBatchRecord batch, {
+    required bool allowExistingBatch,
+  }) async {
+    final existingBatchRows = await _client
+        .from(SupabaseTicketRepository._batchesTable)
+        .select('id, quantity')
+        .eq('batch_label', batch.batchLabel)
+        .limit(1);
+
+    String batchId;
+    final hasExistingBatch = existingBatchRows.isNotEmpty;
+
+    if (hasExistingBatch) {
+      final existingBatch = Map<String, dynamic>.from(existingBatchRows.first);
+      batchId = existingBatch['id'] as String;
+
+      if (!allowExistingBatch) {
+        throw StateError(
+          'Batch ${batch.batchLabel} already exists. Use the legacy ticket registration flow for old paper tickets.',
+        );
+      }
+
+      final currentQuantity = existingBatch['quantity'] as int;
+      await _client
+          .from(SupabaseTicketRepository._batchesTable)
+          .update({
+            'ticket_type': batch.type,
+            'visit_date': batch.visitDate.toIso8601String().split('T').first,
+            'quantity': currentQuantity + batch.quantity,
+            'price': batch.price,
+            'operator': batch.operator,
+          })
+          .eq('id', batchId);
+    } else {
+      final batchRow = await _client
+          .from(SupabaseTicketRepository._batchesTable)
+          .insert({
+            'batch_label': batch.batchLabel,
+            'ticket_type': batch.type,
+            'visit_date': batch.visitDate.toIso8601String().split('T').first,
+            'quantity': batch.quantity,
+            'price': batch.price,
+            'operator': batch.operator,
+          })
+          .select('id')
+          .single();
+      batchId = batchRow['id'] as String;
+    }
+
+    final ticketRows = [
+      for (final ticket in batch.tickets)
+        {
+          'batch_id': batchId,
+          'ticket_number': ticket.ticketNumber,
+          'ticket_code': ticket.code,
+          'qr_payload': ticket.code,
+          'status': _statusToDb(ticket.status),
+          'scanned_at': ticket.scannedAt?.toUtc().toIso8601String(),
+        },
+    ];
+
+    await _client
+        .from(SupabaseTicketRepository._ticketsTable)
+        .insert(ticketRows);
   }
 }
 
