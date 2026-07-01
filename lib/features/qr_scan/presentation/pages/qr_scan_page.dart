@@ -8,6 +8,7 @@ import 'package:waterpark/features/qr_scan/domain/qr_scan_result.dart';
 import 'package:waterpark/features/qr_scan/domain/staff_qr_validator.dart';
 import 'package:waterpark/features/staff_access/data/staff_repository.dart';
 import 'package:waterpark/features/staff_access/domain/staff_member.dart';
+import 'package:waterpark/features/ticketing/domain/ticket_inventory.dart';
 import 'package:waterpark/shared/widgets/brand_surface.dart';
 
 class QrScanPage extends StatefulWidget {
@@ -77,8 +78,8 @@ class _QrScanPageState extends State<QrScanPage> {
         const SizedBox(height: 8),
         Text(
           AppConfig.hasSupabase
-              ? 'Scan a staff QR code using the device camera or a Bluetooth scanner in keyboard mode. The system verifies the QR payload against the staff database and flags invalid codes.'
-              : 'Supabase is required for QR scanning. Configure the database first so the scanner can verify staff records.',
+              ? 'Scan a staff or ticket QR code using the device camera or a Bluetooth scanner in keyboard mode. Staff codes are checked against the staff database, and ticket codes are marked used on the first valid scan.'
+              : 'Ticket scanning works now, but Supabase is still required for staff QR verification. Configure the database when you are ready to validate staff records too.',
           style: const TextStyle(
             color: WaterparkBrand.gray,
             fontSize: 14,
@@ -88,6 +89,10 @@ class _QrScanPageState extends State<QrScanPage> {
         const SizedBox(height: 16),
         ScanSummaryBar(
           staffCount: _staffMembers.length,
+          ticketCount: TicketInventoryScope.of(context).batches.fold<int>(
+            0,
+            (sum, batch) => sum + batch.quantity,
+          ),
           isConnectedToSupabase: AppConfig.hasSupabase,
           scanStatus: _result.status,
         ),
@@ -170,7 +175,7 @@ class _QrScanPageState extends State<QrScanPage> {
   }
 
   Future<void> _startScanner() async {
-    if (_isLoading || _repository == null) {
+    if (_isLoading) {
       return;
     }
 
@@ -252,10 +257,12 @@ class _QrScanPageState extends State<QrScanPage> {
       _isProcessingInput = true;
     });
 
-    final result = _validator.validate(
-      rawValue: rawValue,
-      staffMembers: _staffMembers,
-    );
+    final result = rawValue.startsWith('STAFF|')
+        ? _validator.validate(
+            rawValue: rawValue,
+            staffMembers: _staffMembers,
+          )
+        : await _validateTicketScan(rawValue);
 
     await _playScanSound(result.status);
 
@@ -273,7 +280,11 @@ class _QrScanPageState extends State<QrScanPage> {
   Future<void> _playScanSound(QrScanStatus status) async {
     final assetPath = switch (status) {
       QrScanStatus.idle => null,
-      QrScanStatus.validStaff => 'audio/qr_success.wav',
+      QrScanStatus.validStaff || QrScanStatus.validTicket =>
+        'audio/qr_success.wav',
+      QrScanStatus.alreadyUsedTicket ||
+      QrScanStatus.voidedTicket ||
+      QrScanStatus.unknownTicket ||
       QrScanStatus.unknownStaff ||
       QrScanStatus.invalidFormat ||
       QrScanStatus.tamperedData => 'audio/qr_failure.wav',
@@ -290,17 +301,71 @@ class _QrScanPageState extends State<QrScanPage> {
       // Keep QR validation usable even if sound playback fails on a platform.
     }
   }
+
+  Future<QrScanResult> _validateTicketScan(String rawValue) async {
+    final inventory = TicketInventoryScope.of(context);
+    final redeemResult = await inventory.redeemTicket(rawValue.trim());
+    final lookup = redeemResult.lookup;
+
+    return switch (redeemResult.status) {
+      TicketRedeemStatus.redeemed => QrScanResult(
+          status: QrScanStatus.validTicket,
+          title: 'Ticket Accepted',
+          message:
+              'Ticket ${lookup!.ticket.code} is valid and has been marked as used.',
+          rawValue: rawValue,
+          ticketCode: lookup.ticket.code,
+          ticketBatchLabel: lookup.batch.batchLabel,
+          ticketType: lookup.batch.type,
+          ticketStatusLabel: lookup.batch.tickets[lookup.ticketIndex].status.label,
+          scannedAt: lookup.batch.tickets[lookup.ticketIndex].scannedAt,
+        ),
+      TicketRedeemStatus.alreadyUsed => QrScanResult(
+          status: QrScanStatus.alreadyUsedTicket,
+          title: 'Ticket Already Used',
+          message:
+              'Ticket ${lookup!.ticket.code} has already been scanned and cannot be used again.',
+          rawValue: rawValue,
+          ticketCode: lookup.ticket.code,
+          ticketBatchLabel: lookup.batch.batchLabel,
+          ticketType: lookup.batch.type,
+          ticketStatusLabel: lookup.ticket.status.label,
+          scannedAt: lookup.ticket.scannedAt,
+        ),
+      TicketRedeemStatus.voided => QrScanResult(
+          status: QrScanStatus.voidedTicket,
+          title: 'Ticket Voided',
+          message:
+              'Ticket ${lookup!.ticket.code} is voided and should not open the gate.',
+          rawValue: rawValue,
+          ticketCode: lookup.ticket.code,
+          ticketBatchLabel: lookup.batch.batchLabel,
+          ticketType: lookup.batch.type,
+          ticketStatusLabel: lookup.ticket.status.label,
+          scannedAt: lookup.ticket.scannedAt,
+        ),
+      TicketRedeemStatus.unknown => QrScanResult(
+          status: QrScanStatus.unknownTicket,
+          title: 'Unknown Ticket',
+          message:
+              'This QR code does not match any generated ticket in the current system.',
+          rawValue: rawValue,
+        ),
+    };
+  }
 }
 
 class ScanSummaryBar extends StatelessWidget {
   const ScanSummaryBar({
     required this.staffCount,
+    required this.ticketCount,
     required this.isConnectedToSupabase,
     required this.scanStatus,
     super.key,
   });
 
   final int staffCount;
+  final int ticketCount;
   final bool isConnectedToSupabase;
   final QrScanStatus scanStatus;
 
@@ -324,6 +389,11 @@ class ScanSummaryBar extends StatelessWidget {
             color: WaterparkBrand.primaryBlue,
           ),
           ScanPill(
+            label: 'Tickets Ready',
+            value: '$ticketCount',
+            color: WaterparkBrand.secondaryBlue,
+          ),
+          ScanPill(
             label: 'Last Result',
             value: _labelForStatus(scanStatus),
             color: _colorForStatus(scanStatus),
@@ -336,7 +406,11 @@ class ScanSummaryBar extends StatelessWidget {
   static String _labelForStatus(QrScanStatus status) {
     return switch (status) {
       QrScanStatus.idle => 'Waiting',
-      QrScanStatus.validStaff => 'Valid',
+      QrScanStatus.validStaff => 'Staff OK',
+      QrScanStatus.validTicket => 'Ticket OK',
+      QrScanStatus.alreadyUsedTicket => 'Already Used',
+      QrScanStatus.voidedTicket => 'Voided',
+      QrScanStatus.unknownTicket => 'Unknown Ticket',
       QrScanStatus.unknownStaff => 'Unknown',
       QrScanStatus.invalidFormat => 'Invalid',
       QrScanStatus.tamperedData => 'Mismatch',
@@ -347,6 +421,10 @@ class ScanSummaryBar extends StatelessWidget {
     return switch (status) {
       QrScanStatus.idle => WaterparkBrand.gray,
       QrScanStatus.validStaff => WaterparkBrand.success,
+      QrScanStatus.validTicket => WaterparkBrand.success,
+      QrScanStatus.alreadyUsedTicket => WaterparkBrand.warning,
+      QrScanStatus.voidedTicket => WaterparkBrand.warning,
+      QrScanStatus.unknownTicket => WaterparkBrand.accentRed,
       QrScanStatus.unknownStaff => WaterparkBrand.warning,
       QrScanStatus.invalidFormat => WaterparkBrand.accentRed,
       QrScanStatus.tamperedData => WaterparkBrand.accentRed,
@@ -442,7 +520,7 @@ class ScanCameraCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Use the system camera or a Bluetooth scanner to scan a staff QR. Camera scanning stops after detection so the result can be reviewed clearly.',
+            'Use the system camera or a Bluetooth scanner to scan a staff or ticket QR. Camera scanning stops after detection so the result can be reviewed clearly.',
             style: TextStyle(color: WaterparkBrand.gray, height: 1.4),
           ),
           const SizedBox(height: 14),
@@ -598,7 +676,7 @@ class ScanCameraCard extends StatelessWidget {
                               Text(
                                 isLoading
                                     ? 'Loading staff database...'
-                                    : 'Camera is ready for staff scanning',
+                                    : 'Camera is ready for ticket and staff scanning',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 18,
@@ -641,6 +719,15 @@ bool _isControlCharacter(String value) {
   return value.codeUnits.any((unit) => unit < 32 || unit == 127);
 }
 
+String _formatScanDateTime(DateTime date) {
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final year = date.year;
+  final hour = date.hour.toString().padLeft(2, '0');
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '$day/$month/$year $hour:$minute';
+}
+
 class ScanResultCard extends StatelessWidget {
   const ScanResultCard({
     required this.result,
@@ -658,6 +745,10 @@ class ScanResultCard extends StatelessWidget {
     final color = switch (result.status) {
       QrScanStatus.idle => WaterparkBrand.gray,
       QrScanStatus.validStaff => WaterparkBrand.success,
+      QrScanStatus.validTicket => WaterparkBrand.success,
+      QrScanStatus.alreadyUsedTicket => WaterparkBrand.warning,
+      QrScanStatus.voidedTicket => WaterparkBrand.warning,
+      QrScanStatus.unknownTicket => WaterparkBrand.accentRed,
       QrScanStatus.unknownStaff => WaterparkBrand.warning,
       QrScanStatus.invalidFormat => WaterparkBrand.accentRed,
       QrScanStatus.tamperedData => WaterparkBrand.accentRed,
@@ -704,6 +795,27 @@ class ScanResultCard extends StatelessWidget {
               label: 'Assignment',
               value: result.staffMember!.assignmentLabel,
             ),
+          ],
+          if (result.ticketCode != null) ...[
+            const SizedBox(height: 16),
+            ScanResultDetail(label: 'Ticket Code', value: result.ticketCode!),
+            if (result.ticketBatchLabel != null)
+              ScanResultDetail(
+                label: 'Batch',
+                value: result.ticketBatchLabel!,
+              ),
+            if (result.ticketType != null)
+              ScanResultDetail(label: 'Type', value: result.ticketType!),
+            if (result.ticketStatusLabel != null)
+              ScanResultDetail(
+                label: 'Status',
+                value: result.ticketStatusLabel!,
+              ),
+            if (result.scannedAt != null)
+              ScanResultDetail(
+                label: 'Scanned At',
+                value: _formatScanDateTime(result.scannedAt!),
+              ),
           ],
           if (result.rawValue != null) ...[
             const SizedBox(height: 16),

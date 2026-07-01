@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:waterpark/core/theme/waterpark_brand.dart';
+import 'package:waterpark/features/ticketing/domain/ticket_inventory.dart';
 import 'package:waterpark/shared/widgets/brand_surface.dart';
 
 class TicketingOverviewPage extends StatefulWidget {
@@ -18,8 +19,6 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
   final _quantityController = TextEditingController();
   final _operatorController = TextEditingController();
 
-  final List<TicketBatchRecord> _batches = [];
-
   String _selectedType = 'Weekday';
   DateTime _selectedDate = DateTime.now();
   int _selectedBatchIndex = 0;
@@ -35,93 +34,76 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
 
   @override
   Widget build(BuildContext context) {
-    final totalTickets = _batches.fold<int>(
-      0,
-      (sum, batch) => sum + batch.quantity,
-    );
-    final usedTickets = _batches.fold<int>(0, (sum, batch) => sum + batch.used);
-    final voidedTickets = _batches.fold<int>(
-      0,
-      (sum, batch) => sum + batch.voided,
-    );
-    final readyTickets = _batches.fold<int>(
-      0,
-      (sum, batch) => sum + batch.ready,
-    );
-    final selectedBatch = _batches.isEmpty ? null : _batches[_selectedBatchIndex];
+    final inventory = TicketInventoryScope.of(context);
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Ticketing',
-            style: TextStyle(
-              color: WaterparkBrand.deepBlue,
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'This page is now active for batch setup and code generation. Create a batch, review the generated codes, and update ticket status from the same screen.',
-            style: TextStyle(
-              color: WaterparkBrand.gray,
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 16),
-          TicketSummaryRow(
-            totalTickets: totalTickets,
-            readyTickets: readyTickets,
-            usedTickets: usedTickets,
-            voidedTickets: voidedTickets,
-          ),
-          const SizedBox(height: 16),
-          BatchSelectionOverviewCard(
-            totalBatches: _batches.length,
-            activeBatch: selectedBatch,
-          ),
-          const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 1180;
-              if (stacked) {
-                return Column(
-                  children: [
-                    TicketBatchCreateCard(
-                      formKey: _formKey,
-                      batchLabelController: _batchLabelController,
-                      priceController: _priceController,
-                      quantityController: _quantityController,
-                      operatorController: _operatorController,
-                      selectedType: _selectedType,
-                      selectedDate: _selectedDate,
-                      onTypeChanged: (value) {
-                        setState(() {
-                          _selectedType = value;
-                        });
-                      },
-                      onDateTap: _pickVisitDate,
-                      onCreateBatch: _createBatch,
-                    ),
-                    const SizedBox(height: 16),
-                    TicketBatchTableCard(
-                      batches: _batches,
-                      selectedBatchIndex: _selectedBatchIndex,
-                      onSelectBatch: _openBatchDetails,
-                    ),
-                  ],
-                );
-              }
+    return ListenableBuilder(
+      listenable: inventory,
+      builder: (context, _) {
+        final batches = inventory.batches;
+        final totalTickets = batches.fold<int>(
+          0,
+          (sum, batch) => sum + batch.quantity,
+        );
+        final usedTickets = batches.fold<int>(
+          0,
+          (sum, batch) => sum + batch.used,
+        );
+        final voidedTickets = batches.fold<int>(
+          0,
+          (sum, batch) => sum + batch.voided,
+        );
+        final readyTickets = batches.fold<int>(
+          0,
+          (sum, batch) => sum + batch.ready,
+        );
+        final safeSelectedIndex = batches.isEmpty
+            ? 0
+            : _selectedBatchIndex.clamp(0, batches.length - 1);
+        final selectedBatch = batches.isEmpty ? null : batches[safeSelectedIndex];
 
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 5,
-                    child: Column(
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Ticketing',
+                style: TextStyle(
+                  color: WaterparkBrand.deepBlue,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This page is now active for batch setup and code generation. Create a batch, review the generated codes, and update ticket status from the same screen.',
+                style: TextStyle(
+                  color: WaterparkBrand.gray,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TicketSummaryRow(
+                totalTickets: totalTickets,
+                readyTickets: readyTickets,
+                usedTickets: usedTickets,
+                voidedTickets: voidedTickets,
+              ),
+              const SizedBox(height: 16),
+              BatchSelectionOverviewCard(
+                totalBatches: batches.length,
+                activeBatch: selectedBatch,
+              ),
+              const SizedBox(height: 16),
+              if (inventory.errorMessage != null) ...[
+                _TicketingErrorBanner(message: inventory.errorMessage!),
+                const SizedBox(height: 16),
+              ],
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked = constraints.maxWidth < 1180;
+                  if (stacked) {
+                    return Column(
                       children: [
                         TicketBatchCreateCard(
                           formKey: _formKey,
@@ -141,19 +123,54 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
                         ),
                         const SizedBox(height: 16),
                         TicketBatchTableCard(
-                          batches: _batches,
-                          selectedBatchIndex: _selectedBatchIndex,
+                          batches: batches,
+                          selectedBatchIndex: safeSelectedIndex,
                           onSelectBatch: _openBatchDetails,
                         ),
                       ],
-                    ),
-                  ),
-                ],
-              );
-            },
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: Column(
+                          children: [
+                            TicketBatchCreateCard(
+                              formKey: _formKey,
+                              batchLabelController: _batchLabelController,
+                              priceController: _priceController,
+                              quantityController: _quantityController,
+                              operatorController: _operatorController,
+                              selectedType: _selectedType,
+                              selectedDate: _selectedDate,
+                              onTypeChanged: (value) {
+                                setState(() {
+                                  _selectedType = value;
+                                });
+                              },
+                              onDateTap: _pickVisitDate,
+                              onCreateBatch: _createBatch,
+                            ),
+                            const SizedBox(height: 16),
+                            TicketBatchTableCard(
+                              batches: batches,
+                              selectedBatchIndex: safeSelectedIndex,
+                              onSelectBatch: _openBatchDetails,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -174,60 +191,58 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
     });
   }
 
-  void _createBatch() {
+  Future<void> _createBatch() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
+    final inventory = TicketInventoryScope.of(context);
+    final batchLabel = _batchLabelController.text.trim().toUpperCase();
     final quantity = int.parse(_quantityController.text.trim());
     final price = _parseCurrency(_priceController.text)!;
 
-    final batch = TicketBatchRecord.create(
-      batchLabel: _batchLabelController.text.trim().toUpperCase(),
-      type: _selectedType,
-      quantity: quantity,
-      price: price,
-      visitDate: _selectedDate,
-      operator: _operatorController.text.trim(),
-    );
+    try {
+      await inventory.createBatch(
+        batchLabel: batchLabel,
+        type: _selectedType,
+        quantity: quantity,
+        price: price,
+        visitDate: _selectedDate,
+        operator: _operatorController.text.trim(),
+      );
 
-    setState(() {
-      _batches.insert(0, batch);
-      _selectedBatchIndex = 0;
-      _batchLabelController.clear();
-      _priceController.clear();
-      _quantityController.clear();
-      _operatorController.clear();
-    });
+      setState(() {
+        _selectedBatchIndex = 0;
+        _batchLabelController.clear();
+        _priceController.clear();
+        _quantityController.clear();
+        _operatorController.clear();
+      });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Created ${batch.batchLabel} with ${batch.quantity} tickets.',
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Created $batchLabel with $quantity tickets.',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not create batch. $error')));
+    }
   }
 
-  void _updateTicketStatus(String ticketCode, TicketStatus status) {
-    if (_batches.isEmpty) {
-      return;
-    }
-
-    final batch = _batches[_selectedBatchIndex];
-    final ticketIndex = batch.tickets.indexWhere(
-      (ticket) => ticket.code == ticketCode,
-    );
-    if (ticketIndex == -1) {
-      return;
-    }
-
-    setState(() {
-      batch.tickets[ticketIndex] = batch.tickets[ticketIndex].copyWith(
-        status: status,
-        scannedAt: status == TicketStatus.used ? DateTime.now() : null,
-      );
-    });
+  Future<void> _updateTicketStatus(String ticketCode, TicketStatus status) async {
+    await TicketInventoryScope.of(context).updateTicketStatus(ticketCode, status);
   }
 
   Future<void> _openBatchDetails(int index) async {
@@ -242,7 +257,7 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => TicketBatchDetailsPage(
-          batch: _batches[index],
+          batch: TicketInventoryScope.of(context).batches[index],
           onTicketStatusChanged: _updateTicketStatus,
         ),
       ),
@@ -329,6 +344,36 @@ class TicketSummaryRow extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _TicketingErrorBanner extends StatelessWidget {
+  const _TicketingErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return BrandSurface(
+      child: Row(
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            color: WaterparkBrand.accentRed,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: WaterparkBrand.deepBlue,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -495,7 +540,7 @@ class TicketBatchCreateCard extends StatelessWidget {
   final DateTime selectedDate;
   final ValueChanged<String> onTypeChanged;
   final VoidCallback onDateTap;
-  final VoidCallback onCreateBatch;
+  final Future<void> Function() onCreateBatch;
 
   @override
   Widget build(BuildContext context) {
@@ -532,7 +577,9 @@ class TicketBatchCreateCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 FilledButton.icon(
-                  onPressed: onCreateBatch,
+                  onPressed: () {
+                    onCreateBatch();
+                  },
                   icon: const Icon(Icons.auto_awesome_rounded),
                   label: const Text('Generate Batch'),
                 ),
@@ -795,7 +842,7 @@ class TicketBatchDetailsPage extends StatefulWidget {
   });
 
   final TicketBatchRecord? batch;
-  final void Function(String ticketCode, TicketStatus status)
+  final Future<void> Function(String ticketCode, TicketStatus status)
       onTicketStatusChanged;
 
   @override
@@ -860,10 +907,11 @@ class _TicketBatchDetailsPageState extends State<TicketBatchDetailsPage> {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           child: TicketBatchDetailCard(
             batch: currentBatch,
-            onTicketStatusChanged: (ticketCode, status) {
-              setState(() {
-                widget.onTicketStatusChanged(ticketCode, status);
-              });
+            onTicketStatusChanged: (ticketCode, status) async {
+              await widget.onTicketStatusChanged(ticketCode, status);
+              if (mounted) {
+                setState(() {});
+              }
             },
           ),
         ),
@@ -880,7 +928,7 @@ class TicketBatchDetailCard extends StatelessWidget {
   });
 
   final TicketBatchRecord batch;
-  final void Function(String ticketCode, TicketStatus status)
+  final Future<void> Function(String ticketCode, TicketStatus status)
       onTicketStatusChanged;
 
   @override
@@ -1749,130 +1797,4 @@ String _formatDate(DateTime date) {
 
 String _formatDateTime(DateTime date) {
   return '${_formatDate(date)} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-}
-
-enum TicketStatus { ready, used, voided }
-
-extension TicketStatusX on TicketStatus {
-  String get label {
-    return switch (this) {
-      TicketStatus.ready => 'Ready',
-      TicketStatus.used => 'Used',
-      TicketStatus.voided => 'Void',
-    };
-  }
-
-  Color get color {
-    return switch (this) {
-      TicketStatus.ready => WaterparkBrand.aqua,
-      TicketStatus.used => WaterparkBrand.success,
-      TicketStatus.voided => WaterparkBrand.warning,
-    };
-  }
-}
-
-class TicketRecord {
-  const TicketRecord({
-    required this.code,
-    required this.status,
-    this.scannedAt,
-  });
-
-  final String code;
-  final TicketStatus status;
-  final DateTime? scannedAt;
-
-  TicketRecord copyWith({
-    TicketStatus? status,
-    DateTime? scannedAt,
-  }) {
-    final nextStatus = status ?? this.status;
-    return TicketRecord(
-      code: code,
-      status: nextStatus,
-      scannedAt: nextStatus == TicketStatus.ready
-          ? null
-          : scannedAt ?? this.scannedAt,
-    );
-  }
-}
-
-class TicketBatchRecord {
-  TicketBatchRecord({
-    required this.batchLabel,
-    required this.type,
-    required this.quantity,
-    required this.price,
-    required this.visitDate,
-    required this.operator,
-    required this.tickets,
-  });
-
-  factory TicketBatchRecord.create({
-    required String batchLabel,
-    required String type,
-    required int quantity,
-    required int price,
-    required DateTime visitDate,
-    required String operator,
-  }) {
-    final prefix = switch (type) {
-      'Weekday' => 'WKD',
-      'Weekend' => 'WND',
-      'Group' => 'GRP',
-      'Promo' => 'PRM',
-      _ => 'TKT',
-    };
-    final datePart =
-        '${visitDate.year}${visitDate.month.toString().padLeft(2, '0')}${visitDate.day.toString().padLeft(2, '0')}';
-
-    return TicketBatchRecord(
-      batchLabel: batchLabel,
-      type: type,
-      quantity: quantity,
-      price: price,
-      visitDate: visitDate,
-      operator: operator,
-      tickets: List.generate(
-        quantity,
-        (index) => TicketRecord(
-          code: '$prefix-$datePart-${(index + 1).toString().padLeft(4, '0')}',
-          status: TicketStatus.ready,
-        ),
-      ),
-    );
-  }
-
-  final String batchLabel;
-  final String type;
-  final int quantity;
-  final int price;
-  final DateTime visitDate;
-  final String operator;
-  final List<TicketRecord> tickets;
-
-  String get firstCode => tickets.first.code;
-  int get ready => tickets.where((ticket) => ticket.status == TicketStatus.ready).length;
-  int get used => tickets.where((ticket) => ticket.status == TicketStatus.used).length;
-  int get voided => tickets.where((ticket) => ticket.status == TicketStatus.voided).length;
-
-  String get batchStatusLabel {
-    if (used == quantity) {
-      return 'Finished';
-    }
-    if (used > 0 || voided > 0) {
-      return 'Active';
-    }
-    return 'Ready';
-  }
-
-  Color get batchStatusColor {
-    if (used == quantity) {
-      return WaterparkBrand.success;
-    }
-    if (used > 0 || voided > 0) {
-      return WaterparkBrand.primaryBlue;
-    }
-    return WaterparkBrand.aqua;
-  }
 }
