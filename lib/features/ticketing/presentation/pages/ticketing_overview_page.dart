@@ -1322,19 +1322,19 @@ class TicketBatchDetailCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      batch.batchLabel,
+                      '${batch.batchLabel} • ${batch.tickets.length} Tickets',
                       style: const TextStyle(
                         color: WaterparkBrand.deepBlue,
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       '${batch.type} • ${_formatDate(batch.visitDate)} • ${batch.operator}',
                       style: const TextStyle(
                         color: WaterparkBrand.gray,
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1347,64 +1347,7 @@ class TicketBatchDetailCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              gradient: WaterparkBrand.oceanGradient,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'First ticket QR payload',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        batch.firstCode,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: batch.hasTickets
-                      ? QrImageView(
-                          data: batch.firstCode,
-                          size: 96,
-                          backgroundColor: Colors.white,
-                        )
-                      : const SizedBox(
-                          width: 96,
-                          height: 96,
-                          child: Center(
-                            child: Icon(
-                              Icons.qr_code_2_rounded,
-                              color: WaterparkBrand.gray,
-                              size: 42,
-                            ),
-                          ),
-                        ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -1427,45 +1370,42 @@ class TicketBatchDetailCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          Text(
-            'Batch Tickets (${batch.tickets.length})',
-            style: TextStyle(
-              color: WaterparkBrand.deepBlue,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Each ticket below belongs to this batch and has its own QR. The digital ticket now adapts its artwork by ticket type so the HT view matches the real ticket style more closely.',
-            style: TextStyle(
-              color: WaterparkBrand.gray,
-              fontSize: 13,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 760,
-            child: ListView.separated(
-              itemCount: batch.tickets.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final ticket = batch.tickets[index];
-                return TicketVisualCard(
-                  batch: batch,
-                  ticket: ticket,
-                  ticketNumber: ticket.ticketNumber,
-                  onUse: () =>
-                      onTicketStatusChanged(ticket.code, TicketStatus.used),
-                  onReset: () =>
-                      onTicketStatusChanged(ticket.code, TicketStatus.ready),
-                  onVoid: () =>
-                      onTicketStatusChanged(ticket.code, TicketStatus.voided),
-                );
-              },
-            ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columnCount = constraints.maxWidth >= 1100 ? 3 : 2;
+              final compactLayout = true;
+
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columnCount,
+                  crossAxisSpacing: constraints.maxWidth < 680 ? 10 : 14,
+                  mainAxisSpacing: constraints.maxWidth < 680 ? 10 : 14,
+                  childAspectRatio: switch (columnCount) {
+                    3 => 0.86,
+                    _ => constraints.maxWidth < 680 ? 0.72 : 0.90,
+                  },
+                ),
+                itemCount: batch.tickets.length,
+                itemBuilder: (context, index) {
+                  final ticket = batch.tickets[index];
+                  return TicketVisualCard(
+                    batch: batch,
+                    ticket: ticket,
+                    ticketNumber: ticket.ticketNumber,
+                    compactLayout: compactLayout,
+                    onUse: () =>
+                        onTicketStatusChanged(ticket.code, TicketStatus.used),
+                    onReset: () =>
+                        onTicketStatusChanged(ticket.code, TicketStatus.ready),
+                    onVoid: () =>
+                        onTicketStatusChanged(ticket.code, TicketStatus.voided),
+                  );
+                },
+              );
+            },
           ),
         ],
       ),
@@ -1478,6 +1418,7 @@ class TicketVisualCard extends StatelessWidget {
     required this.batch,
     required this.ticket,
     required this.ticketNumber,
+    required this.compactLayout,
     required this.onUse,
     required this.onReset,
     required this.onVoid,
@@ -1487,6 +1428,7 @@ class TicketVisualCard extends StatelessWidget {
   final TicketBatchRecord batch;
   final TicketRecord ticket;
   final int ticketNumber;
+  final bool compactLayout;
   final VoidCallback onUse;
   final VoidCallback onReset;
   final VoidCallback onVoid;
@@ -1494,7 +1436,7 @@ class TicketVisualCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(compactLayout ? 12 : 14),
       decoration: BoxDecoration(
         color: const Color(0xFFF9FCFF),
         borderRadius: BorderRadius.circular(18),
@@ -1505,7 +1447,7 @@ class TicketVisualCard extends StatelessWidget {
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 560;
+              final stacked = compactLayout || constraints.maxWidth < 560;
               final ticketArtwork = _TicketArtworkCard(
                 batch: batch,
                 ticket: ticket,
@@ -1520,6 +1462,7 @@ class TicketVisualCard extends StatelessWidget {
                     const SizedBox(height: 12),
                     _TicketMetaBlock(
                       ticket: ticket,
+                      ticketNumber: ticketNumber,
                       onUse: onUse,
                       onReset: onReset,
                       onVoid: onVoid,
@@ -1537,6 +1480,7 @@ class TicketVisualCard extends StatelessWidget {
                     flex: 3,
                     child: _TicketMetaBlock(
                       ticket: ticket,
+                      ticketNumber: ticketNumber,
                       onUse: onUse,
                       onReset: onReset,
                       onVoid: onVoid,
@@ -1570,19 +1514,19 @@ class _TicketArtworkCard extends StatelessWidget {
     return Align(
       alignment: Alignment.topLeft,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 320),
+        constraints: const BoxConstraints(maxWidth: 280),
         child: AspectRatio(
           aspectRatio: 1,
           child: Container(
             width: double.infinity,
             decoration: BoxDecoration(
               color: theme.baseColor,
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
                   color: theme.shadowColor,
-                  blurRadius: 22,
-                  offset: const Offset(0, 14),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
@@ -1610,11 +1554,11 @@ class _TicketArtworkCard extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  top: -26,
-                  right: -24,
+                  top: -18,
+                  right: -18,
                   child: Container(
-                    width: 150,
-                    height: 150,
+                    width: 118,
+                    height: 118,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.white.withValues(alpha: 0.14),
@@ -1622,14 +1566,14 @@ class _TicketArtworkCard extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  left: 14,
-                  right: 14,
-                  bottom: 14,
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
                   child: Container(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.90),
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: BorderRadius.circular(18),
                       border: Border.all(
                         color: Colors.white.withValues(alpha: 0.95),
                       ),
@@ -1650,24 +1594,24 @@ class _TicketArtworkCard extends StatelessWidget {
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 7,
+                                horizontal: 6,
+                                vertical: 6,
                               ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFEAF5FF),
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(10),
                               ),
                               child: Image.asset(
                                 'assets/logo/logo waterpark.png',
-                                height: 20,
+                                height: 16,
                                 fit: BoxFit.contain,
                               ),
                             ),
                             const Spacer(),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 5,
+                                horizontal: 8,
+                                vertical: 4,
                               ),
                               decoration: BoxDecoration(
                                 color: theme.accentColor,
@@ -1677,7 +1621,7 @@ class _TicketArtworkCard extends StatelessWidget {
                                 batch.type.toUpperCase(),
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 9,
+                                  fontSize: 8,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: 0.6,
                                 ),
@@ -1685,27 +1629,27 @@ class _TicketArtworkCard extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Text(
                           theme.headline,
                           style: const TextStyle(
                             color: WaterparkBrand.deepBlue,
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: FontWeight.w900,
                             height: 1.05,
                           ),
                         ),
-                        const SizedBox(height: 5),
+                        const SizedBox(height: 4),
                         Text(
                           theme.subline,
                           style: const TextStyle(
                             color: Color(0xFF426988),
-                            fontSize: 10,
+                            fontSize: 9,
                             fontWeight: FontWeight.w600,
                             height: 1.3,
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1715,27 +1659,27 @@ class _TicketArtworkCard extends StatelessWidget {
                                 children: [
                                   Container(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 8,
+                                      horizontal: 8,
+                                      vertical: 7,
                                     ),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFF3F8FD),
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
                                       ticket.code,
                                       style: TextStyle(
                                         color: theme.textColor,
-                                        fontSize: 15,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.w900,
                                         letterSpacing: 0.2,
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 8),
                                   Wrap(
-                                    spacing: 10,
-                                    runSpacing: 8,
+                                    spacing: 8,
+                                    runSpacing: 6,
                                     children: [
                                       _TicketArtworkMeta(
                                         label: 'Batch',
@@ -1759,13 +1703,13 @@ class _TicketArtworkCard extends StatelessWidget {
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 8),
                             Container(
-                              width: 102,
-                              padding: const EdgeInsets.all(8),
+                              width: 90,
+                              padding: const EdgeInsets.all(7),
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
                                   color: const Color(0xFFE6EEF5),
                                 ),
@@ -1773,20 +1717,20 @@ class _TicketArtworkCard extends StatelessWidget {
                               child: Column(
                                 children: [
                                   SizedBox(
-                                    width: 78,
-                                    height: 78,
+                                    width: 66,
+                                    height: 66,
                                     child: QrImageView(
                                       data: ticket.code,
                                       backgroundColor: Colors.white,
                                     ),
                                   ),
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 5),
                                   Text(
                                     theme.qrLabel,
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       color: WaterparkBrand.deepBlue,
-                                      fontSize: 9,
+                                      fontSize: 8,
                                       fontWeight: FontWeight.w800,
                                       height: 1.25,
                                     ),
@@ -1796,22 +1740,22 @@ class _TicketArtworkCard extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 9,
+                            horizontal: 9,
+                            vertical: 8,
                           ),
                           decoration: BoxDecoration(
                             color: theme.accentColor.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             theme.footerNote,
                             style: const TextStyle(
                               color: WaterparkBrand.deepBlue,
-                              fontSize: 10,
+                              fontSize: 9,
                               height: 1.3,
                               fontWeight: FontWeight.w700,
                             ),
@@ -1897,7 +1841,7 @@ class _TicketVisualTheme {
     final normalizedType = type.trim().toLowerCase();
 
     return switch (normalizedType) {
-      'Weekday' => const _TicketVisualTheme(
+      'weekday' => const _TicketVisualTheme(
         headline: 'Weekday Splash Pass',
         subline: 'Smooth weekday entry with the classic family ticket artwork.',
         footerNote:
@@ -2025,12 +1969,14 @@ class _TicketVisualTheme {
 class _TicketMetaBlock extends StatelessWidget {
   const _TicketMetaBlock({
     required this.ticket,
+    required this.ticketNumber,
     required this.onUse,
     required this.onReset,
     required this.onVoid,
   });
 
   final TicketRecord ticket;
+  final int ticketNumber;
   final VoidCallback onUse;
   final VoidCallback onReset;
   final VoidCallback onVoid;
@@ -2040,6 +1986,22 @@ class _TicketMetaBlock extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF5FF),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            'Ticket #${ticketNumber.toString().padLeft(3, '0')}',
+            style: const TextStyle(
+              color: WaterparkBrand.primaryBlue,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
@@ -2047,7 +2009,7 @@ class _TicketMetaBlock extends StatelessWidget {
                 ticket.code,
                 style: const TextStyle(
                   color: WaterparkBrand.deepBlue,
-                  fontSize: 14,
+                  fontSize: 16,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -2069,7 +2031,7 @@ class _TicketMetaBlock extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         const Text(
           'Ticket Actions',
           style: TextStyle(
@@ -2078,7 +2040,7 @@ class _TicketMetaBlock extends StatelessWidget {
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Wrap(
           spacing: 8,
           runSpacing: 8,
