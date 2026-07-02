@@ -7,7 +7,7 @@ import 'package:waterpark/features/staff_access/presentation/pages/staff_access_
 import 'package:waterpark/features/ticketing/presentation/pages/ticketing_overview_page.dart';
 import 'package:waterpark/shared/widgets/brand_surface.dart';
 
-const kWaterparkLogoAsset = 'logo waterpark.png';
+const kWaterparkLogoAsset = 'assets/logo/logo waterpark.png';
 
 class WaterparkDashboardShell extends StatefulWidget {
   const WaterparkDashboardShell({super.key});

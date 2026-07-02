@@ -72,7 +72,9 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
         final safeSelectedIndex = batches.isEmpty
             ? 0
             : _selectedBatchIndex.clamp(0, batches.length - 1);
-        final selectedBatch = batches.isEmpty ? null : batches[safeSelectedIndex];
+        final selectedBatch = batches.isEmpty
+            ? null
+            : batches[safeSelectedIndex];
 
         return SingleChildScrollView(
           child: Column(
@@ -294,11 +296,7 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Created $batchLabel with $quantity tickets.',
-          ),
-        ),
+        SnackBar(content: Text('Created $batchLabel with $quantity tickets.')),
       );
     } catch (error) {
       if (!mounted) {
@@ -311,8 +309,13 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
     }
   }
 
-  Future<void> _updateTicketStatus(String ticketCode, TicketStatus status) async {
-    await TicketInventoryScope.of(context).updateTicketStatus(ticketCode, status);
+  Future<void> _updateTicketStatus(
+    String ticketCode,
+    TicketStatus status,
+  ) async {
+    await TicketInventoryScope.of(
+      context,
+    ).updateTicketStatus(ticketCode, status);
   }
 
   Future<void> _registerExistingTickets() async {
@@ -333,7 +336,9 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
     if (endingTicketNumber < startingTicketNumber) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Ending ticket number must be greater than or equal to the starting number.'),
+          content: Text(
+            'Ending ticket number must be greater than or equal to the starting number.',
+          ),
         ),
       );
       return;
@@ -363,8 +368,7 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
         return;
       }
 
-      final registeredCount =
-          (endingTicketNumber - startingTicketNumber) + 1;
+      final registeredCount = (endingTicketNumber - startingTicketNumber) + 1;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -378,9 +382,7 @@ class _TicketingOverviewPageState extends State<TicketingOverviewPage> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not register existing tickets. $error'),
-        ),
+        SnackBar(content: Text('Could not register existing tickets. $error')),
       );
     }
   }
@@ -422,14 +424,30 @@ class TicketSummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cards = [
-      ('Tickets Generated', '$totalTickets', Icons.confirmation_num_outlined,
-          WaterparkBrand.primaryBlue),
-      ('Ready To Scan', '$readyTickets', Icons.qr_code_2_rounded,
-          WaterparkBrand.aqua),
-      ('Used Tickets', '$usedTickets', Icons.verified_outlined,
-          WaterparkBrand.success),
-      ('Voided Tickets', '$voidedTickets', Icons.block_rounded,
-          WaterparkBrand.warning),
+      (
+        'Tickets Generated',
+        '$totalTickets',
+        Icons.confirmation_num_outlined,
+        WaterparkBrand.primaryBlue,
+      ),
+      (
+        'Ready To Scan',
+        '$readyTickets',
+        Icons.qr_code_2_rounded,
+        WaterparkBrand.aqua,
+      ),
+      (
+        'Used Tickets',
+        '$usedTickets',
+        Icons.verified_outlined,
+        WaterparkBrand.success,
+      ),
+      (
+        'Voided Tickets',
+        '$voidedTickets',
+        Icons.block_rounded,
+        WaterparkBrand.warning,
+      ),
     ];
 
     return LayoutBuilder(
@@ -542,7 +560,9 @@ class BatchSelectionOverviewCard extends StatelessWidget {
           final totalCard = _BatchOverviewMetric(
             title: 'All Batches',
             value: '$totalBatches',
-            subtitle: totalBatches == 1 ? '1 batch created' : '$totalBatches batches created',
+            subtitle: totalBatches == 1
+                ? '1 batch created'
+                : '$totalBatches batches created',
             icon: Icons.layers_rounded,
             color: WaterparkBrand.primaryBlue,
           );
@@ -557,11 +577,7 @@ class BatchSelectionOverviewCard extends StatelessWidget {
 
           if (stacked) {
             return Column(
-              children: [
-                totalCard,
-                const SizedBox(height: 12),
-                activeCard,
-              ],
+              children: [totalCard, const SizedBox(height: 12), activeCard],
             );
           }
 
@@ -1112,7 +1128,7 @@ class TicketBatchTableCard extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFE3EEF8)),
               ),
               child: const Text(
-              'No ticket batches yet. Create your first batch from the form above and it will appear here.',
+                'No ticket batches yet. Create your first batch from the form above and it will appear here.',
                 style: TextStyle(
                   color: WaterparkBrand.gray,
                   fontSize: 14,
@@ -1136,7 +1152,10 @@ class TicketBatchTableCard extends StatelessWidget {
                         Expanded(flex: 2, child: TicketHeaderCell('Batch')),
                         Expanded(child: TicketHeaderCell('Type')),
                         Expanded(child: TicketHeaderCell('Qty')),
-                        Expanded(flex: 2, child: TicketHeaderCell('First Code')),
+                        Expanded(
+                          flex: 2,
+                          child: TicketHeaderCell('First Code'),
+                        ),
                         Expanded(child: TicketHeaderCell('Status')),
                       ],
                     ),
@@ -1163,7 +1182,9 @@ class TicketBatchTableCard extends StatelessWidget {
                               child: TicketBodyCell(batches[index].type),
                             ),
                             Expanded(
-                              child: TicketBodyCell('${batches[index].quantity}'),
+                              child: TicketBodyCell(
+                                '${batches[index].quantity}',
+                              ),
                             ),
                             Expanded(
                               flex: 2,
@@ -1200,7 +1221,7 @@ class TicketBatchDetailsPage extends StatefulWidget {
 
   final TicketBatchRecord? batch;
   final Future<void> Function(String ticketCode, TicketStatus status)
-      onTicketStatusChanged;
+  onTicketStatusChanged;
 
   @override
   State<TicketBatchDetailsPage> createState() => _TicketBatchDetailsPageState();
@@ -1286,7 +1307,7 @@ class TicketBatchDetailCard extends StatelessWidget {
 
   final TicketBatchRecord batch;
   final Future<void> Function(String ticketCode, TicketStatus status)
-      onTicketStatusChanged;
+  onTicketStatusChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1362,11 +1383,23 @@ class TicketBatchDetailCard extends StatelessWidget {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: QrImageView(
-                    data: batch.firstCode,
-                    size: 96,
-                    backgroundColor: Colors.white,
-                  ),
+                  child: batch.hasTickets
+                      ? QrImageView(
+                          data: batch.firstCode,
+                          size: 96,
+                          backgroundColor: Colors.white,
+                        )
+                      : const SizedBox(
+                          width: 96,
+                          height: 96,
+                          child: Center(
+                            child: Icon(
+                              Icons.qr_code_2_rounded,
+                              color: WaterparkBrand.gray,
+                              size: 42,
+                            ),
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -1405,7 +1438,7 @@ class TicketBatchDetailCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Each ticket below belongs to this batch and has its own QR. The card uses a ticket-style artwork placeholder for now, so we can replace it later with the real printed ticket design.',
+            'Each ticket below belongs to this batch and has its own QR. The digital ticket now adapts its artwork by ticket type so the HT view matches the real ticket style more closely.',
             style: TextStyle(
               color: WaterparkBrand.gray,
               fontSize: 13,
@@ -1532,181 +1565,273 @@ class _TicketArtworkCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0E7DCC), Color(0xFF49B2F0)],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x220066B6),
-            blurRadius: 18,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: -14,
-            right: 120,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.08),
-              ),
+    final theme = _TicketVisualTheme.resolve(batch.type);
+
+    return Align(
+      alignment: Alignment.topLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: theme.baseColor,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.shadowColor,
+                  blurRadius: 22,
+                  offset: const Offset(0, 14),
+                ),
+              ],
             ),
-          ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Image.asset(
-                          'logo waterpark.png',
-                          height: 38,
-                          fit: BoxFit.contain,
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: theme.backgroundAssetPath == null
+                      ? DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: theme.backgroundGradient!,
+                          ),
+                        )
+                      : Image.asset(
+                          theme.backgroundAssetPath!,
+                          fit: BoxFit.cover,
+                          alignment: Alignment.topCenter,
                         ),
-                        const Spacer(),
+                ),
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: theme.squareOverlayGradient,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: -26,
+                  right: -24,
+                  child: Container(
+                    width: 150,
+                    height: 150,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 14,
+                  right: 14,
+                  bottom: 14,
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.90),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.95),
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x18001933),
+                          blurRadius: 16,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEAF5FF),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Image.asset(
+                                'assets/logo/logo waterpark.png',
+                                height: 20,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.accentColor,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                batch.type.toUpperCase(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          theme.headline,
+                          style: const TextStyle(
+                            color: WaterparkBrand.deepBlue,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            height: 1.05,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          theme.subline,
+                          style: const TextStyle(
+                            color: Color(0xFF426988),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            height: 1.3,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF3F8FD),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Text(
+                                      ticket.code,
+                                      style: TextStyle(
+                                        color: theme.textColor,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 8,
+                                    children: [
+                                      _TicketArtworkMeta(
+                                        label: 'Batch',
+                                        value: batch.batchLabel,
+                                      ),
+                                      _TicketArtworkMeta(
+                                        label: 'No.',
+                                        value:
+                                            '#${ticketNumber.toString().padLeft(3, '0')}',
+                                      ),
+                                      _TicketArtworkMeta(
+                                        label: 'Date',
+                                        value: _formatDate(batch.visitDate),
+                                      ),
+                                      _TicketArtworkMeta(
+                                        label: 'Price',
+                                        value: _formatRupiah(batch.price),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              width: 102,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFFE6EEF5),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: 78,
+                                    height: 78,
+                                    child: QrImageView(
+                                      data: ticket.code,
+                                      backgroundColor: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    theme.qrLabel,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: WaterparkBrand.deepBlue,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
                         Container(
+                          width: double.infinity,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
-                            vertical: 6,
+                            vertical: 9,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(999),
+                            color: theme.accentColor.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                           child: Text(
-                            batch.type,
+                            theme.footerNote,
                             style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
+                              color: WaterparkBrand.deepBlue,
+                              fontSize: 10,
+                              height: 1.3,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Puri Nirwana Waterpark Ticket',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      ticket.code,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      children: [
-                        _TicketArtworkMeta(
-                          label: 'Batch',
-                          value: batch.batchLabel,
-                        ),
-                        _TicketArtworkMeta(
-                          label: 'Ticket No.',
-                          value: '#${ticketNumber.toString().padLeft(3, '0')}',
-                        ),
-                        _TicketArtworkMeta(
-                          label: 'Visit Date',
-                          value: _formatDate(batch.visitDate),
-                        ),
-                        _TicketArtworkMeta(
-                          label: 'Price',
-                          value: _formatRupiah(batch.price),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.20),
-                        ),
-                      ),
-                      child: const Text(
-                        'Ticket artwork placeholder. Replace this visual with the real ticket design image later if needed.',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Column(
-                  children: [
-                    SizedBox(
-                      width: 116,
-                      height: 116,
-                      child: QrImageView(
-                        data: ticket.code,
-                        backgroundColor: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'QR Placeholder',
-                      style: TextStyle(
-                        color: WaterparkBrand.gray,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
 class _TicketArtworkMeta extends StatelessWidget {
-  const _TicketArtworkMeta({
-    required this.label,
-    required this.value,
-  });
+  const _TicketArtworkMeta({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1719,23 +1844,181 @@ class _TicketArtworkMeta extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
+          style: TextStyle(
+            color: const Color(0xFF66839D),
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 3),
         Text(
           value,
           style: const TextStyle(
-            color: Colors.white,
+            color: WaterparkBrand.deepBlue,
             fontSize: 13,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ],
     );
+  }
+}
+
+class _TicketVisualTheme {
+  const _TicketVisualTheme({
+    required this.headline,
+    required this.subline,
+    required this.footerNote,
+    required this.qrLabel,
+    required this.textColor,
+    required this.baseColor,
+    required this.accentColor,
+    required this.shadowColor,
+    required this.overlayGradient,
+    required this.squareOverlayGradient,
+    this.backgroundAssetPath,
+    this.backgroundGradient,
+  });
+
+  final String headline;
+  final String subline;
+  final String footerNote;
+  final String qrLabel;
+  final String? backgroundAssetPath;
+  final Gradient? backgroundGradient;
+  final Color textColor;
+  final Color baseColor;
+  final Color accentColor;
+  final Color shadowColor;
+  final Gradient overlayGradient;
+  final Gradient squareOverlayGradient;
+
+  static _TicketVisualTheme resolve(String type) {
+    final normalizedType = type.trim().toLowerCase();
+
+    return switch (normalizedType) {
+      'Weekday' => const _TicketVisualTheme(
+        headline: 'Weekday Splash Pass',
+        subline: 'Smooth weekday entry with the classic family ticket artwork.',
+        footerNote:
+            'Valid for one visit on Monday to Saturday. Please scan this QR at the gate.',
+        qrLabel: 'Scan For Entry',
+        backgroundAssetPath: 'assets/tickets/Weekday.png',
+        textColor: WaterparkBrand.deepBlue,
+        baseColor: Color(0xFF1071BA),
+        accentColor: WaterparkBrand.primaryBlue,
+        shadowColor: Color(0x22006AB0),
+        overlayGradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xD9076EB4), Color(0xA63CB9F2), Color(0xC90A2440)],
+        ),
+        squareOverlayGradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x1AFFFFFF), Color(0x66005E9C), Color(0xCC06233E)],
+          stops: [0, 0.42, 1],
+        ),
+      ),
+      'weekend' => const _TicketVisualTheme(
+        headline: 'Weekend Wave Pass',
+        subline:
+            'Bright weekend artwork for Sunday, long weekend, and holiday traffic.',
+        footerNote:
+            'Use this design for high-season entry. Counter confirmation stays required.',
+        qrLabel: 'Weekend Gate QR',
+        backgroundAssetPath: 'assets/tickets/Weekend.png',
+        textColor: WaterparkBrand.deepBlue,
+        baseColor: Color(0xFF207AC9),
+        accentColor: Color(0xFFE34B5B),
+        shadowColor: Color(0x22335E96),
+        overlayGradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xE6F9FBFF), Color(0xB30D83D5), Color(0xD912355A)],
+        ),
+        squareOverlayGradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x14FFFFFF), Color(0x4D2F84C8), Color(0xD919314D)],
+          stops: [0, 0.45, 1],
+        ),
+      ),
+      'group' || 'rombongan' => const _TicketVisualTheme(
+        headline: 'Rombongan Adventure Pass',
+        subline:
+            'Ticket rombongan with artwork matched to the family group design.',
+        footerNote:
+            'Ideal for rombongan sales and team visits. Present the matching batch at check-in.',
+        qrLabel: 'Group Check-In QR',
+        backgroundAssetPath: 'assets/tickets/Rombongan.png',
+        textColor: WaterparkBrand.deepBlue,
+        baseColor: Color(0xFF5D9FD4),
+        accentColor: Color(0xFFEF7A97),
+        shadowColor: Color(0x22335E96),
+        overlayGradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xCCEFF8FF), Color(0xAF80D4FF), Color(0xD1284470)],
+        ),
+        squareOverlayGradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x10FFFFFF), Color(0x4D73B8E2), Color(0xD82F4565)],
+          stops: [0, 0.42, 1],
+        ),
+      ),
+      'promo' => const _TicketVisualTheme(
+        headline: 'Promo Flash Pass',
+        subline:
+            'A digital-only promo layout with stronger contrast for campaigns and special offers.',
+        footerNote:
+            'Promo tickets can use a separate campaign rule set while keeping the same scan flow.',
+        qrLabel: 'Promo Redeem QR',
+        backgroundGradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF052847), Color(0xFF0D5DA8), Color(0xFF1CD2C8)],
+        ),
+        textColor: WaterparkBrand.deepBlue,
+        baseColor: Color(0xFF0A4D80),
+        accentColor: Color(0xFFFF7A00),
+        shadowColor: Color(0x22084478),
+        overlayGradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xA61E2D4B), Color(0x6650E3C2), Color(0xCC021527)],
+        ),
+        squareOverlayGradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x0DFFFFFF), Color(0x4D0C5B8E), Color(0xD9051930)],
+          stops: [0, 0.42, 1],
+        ),
+      ),
+      _ => const _TicketVisualTheme(
+        headline: 'Waterpark Entry Pass',
+        subline: 'Standard digital ticket artwork for general admission.',
+        footerNote: 'Show this ticket to the operator and scan the QR code.',
+        qrLabel: 'Entry QR',
+        backgroundGradient: WaterparkBrand.oceanGradient,
+        textColor: WaterparkBrand.deepBlue,
+        baseColor: WaterparkBrand.primaryBlue,
+        accentColor: WaterparkBrand.aqua,
+        shadowColor: Color(0x220066B6),
+        overlayGradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0x8A0C70BE), Color(0x8032B8F5), Color(0xAD05263E)],
+        ),
+        squareOverlayGradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x14FFFFFF), Color(0x4D1677B1), Color(0xD906243E)],
+          stops: [0, 0.42, 1],
+        ),
+      ),
+    };
   }
 }
 
@@ -1890,10 +2173,7 @@ class _TypePicker extends StatelessWidget {
       decoration: _ticketInputDecoration('Ticket Type', required: required),
       items: [
         for (final type in types)
-          DropdownMenuItem<String>(
-            value: type,
-            child: Text(type),
-          ),
+          DropdownMenuItem<String>(value: type, child: Text(type)),
       ],
       onChanged: (value) {
         if (value != null) {
@@ -2005,11 +2285,7 @@ class TicketingTextField extends StatelessWidget {
 }
 
 class TicketStatusPill extends StatelessWidget {
-  const TicketStatusPill({
-    required this.label,
-    required this.color,
-    super.key,
-  });
+  const TicketStatusPill({required this.label, required this.color, super.key});
 
   final String label;
   final Color color;
@@ -2071,10 +2347,7 @@ InputDecoration _ticketInputDecoration(String label, {bool required = false}) {
     label: RichText(
       text: TextSpan(
         text: label,
-        style: const TextStyle(
-          color: WaterparkBrand.gray,
-          fontSize: 14,
-        ),
+        style: const TextStyle(color: WaterparkBrand.gray, fontSize: 14),
         children: required
             ? const [
                 TextSpan(

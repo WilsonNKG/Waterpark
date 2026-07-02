@@ -37,10 +37,7 @@ class TicketRecord {
   final TicketStatus status;
   final DateTime? scannedAt;
 
-  TicketRecord copyWith({
-    TicketStatus? status,
-    DateTime? scannedAt,
-  }) {
+  TicketRecord copyWith({TicketStatus? status, DateTime? scannedAt}) {
     final nextStatus = status ?? this.status;
     return TicketRecord(
       ticketNumber: ticketNumber,
@@ -85,6 +82,7 @@ class TicketBatchRecord {
         (index) => TicketRecord(
           ticketNumber: startingTicketNumber + index,
           code: _buildTicketCode(
+            batchLabel: batchLabel,
             type: type,
             visitDate: visitDate,
             ticketNumber: startingTicketNumber + index,
@@ -103,7 +101,8 @@ class TicketBatchRecord {
   final String operator;
   final List<TicketRecord> tickets;
 
-  String get firstCode => tickets.first.code;
+  bool get hasTickets => tickets.isNotEmpty;
+  String get firstCode => hasTickets ? tickets.first.code : 'No tickets yet';
   int get ready =>
       tickets.where((ticket) => ticket.status == TicketStatus.ready).length;
   int get used =>
@@ -133,6 +132,7 @@ class TicketBatchRecord {
 }
 
 String _buildTicketCode({
+  required String batchLabel,
   required String type,
   required DateTime visitDate,
   required int ticketNumber,
@@ -146,7 +146,13 @@ String _buildTicketCode({
   };
   final datePart =
       '${visitDate.year}${visitDate.month.toString().padLeft(2, '0')}${visitDate.day.toString().padLeft(2, '0')}';
-  return '$prefix-$datePart-${ticketNumber.toString().padLeft(4, '0')}';
+  final batchPart = batchLabel
+      .trim()
+      .toUpperCase()
+      .replaceAll(RegExp(r'[^A-Z0-9]+'), '')
+      .replaceAll(RegExp(r'^[A-Z]+'), '');
+  final normalizedBatchPart = batchPart.isEmpty ? 'GEN' : batchPart;
+  return '$prefix-$datePart-$normalizedBatchPart-${ticketNumber.toString().padLeft(4, '0')}';
 }
 
 class TicketLookup {
@@ -202,11 +208,11 @@ abstract class TicketRepository {
 class TicketInventory extends ChangeNotifier {
   TicketInventory({TicketRepository? repository}) : _repository = repository {
     if (_repository != null) {
-      _inventoryChangesSubscription = _repository.watchInventoryChanges().listen((
-        _,
-      ) {
-        _scheduleBackgroundRefresh();
-      });
+      _inventoryChangesSubscription = _repository
+          .watchInventoryChanges()
+          .listen((_) {
+            _scheduleBackgroundRefresh();
+          });
     }
   }
 
@@ -346,7 +352,11 @@ class TicketInventory extends ChangeNotifier {
   TicketLookup? findTicket(String code) {
     for (var batchIndex = 0; batchIndex < _batches.length; batchIndex++) {
       final batch = _batches[batchIndex];
-      for (var ticketIndex = 0; ticketIndex < batch.tickets.length; ticketIndex++) {
+      for (
+        var ticketIndex = 0;
+        ticketIndex < batch.tickets.length;
+        ticketIndex++
+      ) {
         final ticket = batch.tickets[ticketIndex];
         if (ticket.code == code) {
           return TicketLookup(
@@ -384,7 +394,9 @@ class TicketInventory extends ChangeNotifier {
 
     lookup.batch.tickets[lookup.ticketIndex] = lookup.ticket.copyWith(
       status: status,
-      scannedAt: status == TicketStatus.used ? (scannedAt ?? DateTime.now()) : null,
+      scannedAt: status == TicketStatus.used
+          ? (scannedAt ?? DateTime.now())
+          : null,
     );
     notifyListeners();
     return true;
@@ -428,45 +440,45 @@ class TicketInventory extends ChangeNotifier {
 
     return switch (lookup.ticket.status) {
       TicketStatus.ready => () {
-          final scannedAt = DateTime.now();
-          lookup.batch.tickets[lookup.ticketIndex] = lookup.ticket.copyWith(
-            status: TicketStatus.used,
-            scannedAt: scannedAt,
-          );
-          notifyListeners();
-          return TicketRedeemResult(
-            status: TicketRedeemStatus.redeemed,
-            lookup: TicketLookup(
-              batch: lookup.batch,
-              ticket: lookup.batch.tickets[lookup.ticketIndex],
-              batchIndex: lookup.batchIndex,
-              ticketIndex: lookup.ticketIndex,
-            ),
-            ticketCode: lookup.ticket.code,
-            ticketStatus: TicketStatus.used,
-            scannedAt: scannedAt,
-            batchLabel: lookup.batch.batchLabel,
-            ticketType: lookup.batch.type,
-          );
-        }(),
+        final scannedAt = DateTime.now();
+        lookup.batch.tickets[lookup.ticketIndex] = lookup.ticket.copyWith(
+          status: TicketStatus.used,
+          scannedAt: scannedAt,
+        );
+        notifyListeners();
+        return TicketRedeemResult(
+          status: TicketRedeemStatus.redeemed,
+          lookup: TicketLookup(
+            batch: lookup.batch,
+            ticket: lookup.batch.tickets[lookup.ticketIndex],
+            batchIndex: lookup.batchIndex,
+            ticketIndex: lookup.ticketIndex,
+          ),
+          ticketCode: lookup.ticket.code,
+          ticketStatus: TicketStatus.used,
+          scannedAt: scannedAt,
+          batchLabel: lookup.batch.batchLabel,
+          ticketType: lookup.batch.type,
+        );
+      }(),
       TicketStatus.used => TicketRedeemResult(
-          status: TicketRedeemStatus.alreadyUsed,
-          lookup: lookup,
-          ticketCode: lookup.ticket.code,
-          ticketStatus: lookup.ticket.status,
-          scannedAt: lookup.ticket.scannedAt,
-          batchLabel: lookup.batch.batchLabel,
-          ticketType: lookup.batch.type,
-        ),
+        status: TicketRedeemStatus.alreadyUsed,
+        lookup: lookup,
+        ticketCode: lookup.ticket.code,
+        ticketStatus: lookup.ticket.status,
+        scannedAt: lookup.ticket.scannedAt,
+        batchLabel: lookup.batch.batchLabel,
+        ticketType: lookup.batch.type,
+      ),
       TicketStatus.voided => TicketRedeemResult(
-          status: TicketRedeemStatus.voided,
-          lookup: lookup,
-          ticketCode: lookup.ticket.code,
-          ticketStatus: lookup.ticket.status,
-          scannedAt: lookup.ticket.scannedAt,
-          batchLabel: lookup.batch.batchLabel,
-          ticketType: lookup.batch.type,
-        ),
+        status: TicketRedeemStatus.voided,
+        lookup: lookup,
+        ticketCode: lookup.ticket.code,
+        ticketStatus: lookup.ticket.status,
+        scannedAt: lookup.ticket.scannedAt,
+        batchLabel: lookup.batch.batchLabel,
+        ticketType: lookup.batch.type,
+      ),
     };
   }
 
@@ -487,8 +499,8 @@ class TicketInventoryScope extends InheritedNotifier<TicketInventory> {
   }) : super(notifier: inventory);
 
   static TicketInventory of(BuildContext context) {
-    final scope =
-        context.dependOnInheritedWidgetOfExactType<TicketInventoryScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<TicketInventoryScope>();
     assert(scope != null, 'TicketInventoryScope not found in widget tree.');
     return scope!.notifier!;
   }

@@ -77,7 +77,9 @@ class SupabaseTicketRepository implements TicketRepository {
                 status: _statusFromDb(ticketRow['status'] as String),
                 scannedAt: ticketRow['scanned_at'] == null
                     ? null
-                    : DateTime.parse(ticketRow['scanned_at'] as String).toLocal(),
+                    : DateTime.parse(
+                        ticketRow['scanned_at'] as String,
+                      ).toLocal(),
               ),
             )
             .toList(),
@@ -100,35 +102,35 @@ class SupabaseTicketRepository implements TicketRepository {
     final row = rows.first;
     return switch (row['scan_result'] as String) {
       'accepted' => TicketRedeemResult(
-          status: TicketRedeemStatus.redeemed,
-          ticketCode: row['ticket_code'] as String?,
-          ticketStatus: _statusFromDb(row['status'] as String? ?? 'used'),
-          scannedAt: row['scanned_at'] == null
-              ? null
-              : DateTime.parse(row['scanned_at'] as String).toLocal(),
-          batchLabel: row['batch_label'] as String?,
-          ticketType: row['ticket_type'] as String?,
-        ),
+        status: TicketRedeemStatus.redeemed,
+        ticketCode: row['ticket_code'] as String?,
+        ticketStatus: _statusFromDb(row['status'] as String? ?? 'used'),
+        scannedAt: row['scanned_at'] == null
+            ? null
+            : DateTime.parse(row['scanned_at'] as String).toLocal(),
+        batchLabel: row['batch_label'] as String?,
+        ticketType: row['ticket_type'] as String?,
+      ),
       'already_used' => TicketRedeemResult(
-          status: TicketRedeemStatus.alreadyUsed,
-          ticketCode: row['ticket_code'] as String?,
-          ticketStatus: _statusFromDb(row['status'] as String? ?? 'used'),
-          scannedAt: row['scanned_at'] == null
-              ? null
-              : DateTime.parse(row['scanned_at'] as String).toLocal(),
-          batchLabel: row['batch_label'] as String?,
-          ticketType: row['ticket_type'] as String?,
-        ),
+        status: TicketRedeemStatus.alreadyUsed,
+        ticketCode: row['ticket_code'] as String?,
+        ticketStatus: _statusFromDb(row['status'] as String? ?? 'used'),
+        scannedAt: row['scanned_at'] == null
+            ? null
+            : DateTime.parse(row['scanned_at'] as String).toLocal(),
+        batchLabel: row['batch_label'] as String?,
+        ticketType: row['ticket_type'] as String?,
+      ),
       'void' => TicketRedeemResult(
-          status: TicketRedeemStatus.voided,
-          ticketCode: row['ticket_code'] as String?,
-          ticketStatus: _statusFromDb(row['status'] as String? ?? 'void'),
-          scannedAt: row['scanned_at'] == null
-              ? null
-              : DateTime.parse(row['scanned_at'] as String).toLocal(),
-          batchLabel: row['batch_label'] as String?,
-          ticketType: row['ticket_type'] as String?,
-        ),
+        status: TicketRedeemStatus.voided,
+        ticketCode: row['ticket_code'] as String?,
+        ticketStatus: _statusFromDb(row['status'] as String? ?? 'void'),
+        scannedAt: row['scanned_at'] == null
+            ? null
+            : DateTime.parse(row['scanned_at'] as String).toLocal(),
+        batchLabel: row['batch_label'] as String?,
+        ticketType: row['ticket_type'] as String?,
+      ),
       _ => const TicketRedeemResult(status: TicketRedeemStatus.unknown),
     };
   }
@@ -178,6 +180,7 @@ extension on SupabaseTicketRepository {
         .limit(1);
 
     String batchId;
+    var createdNewBatch = false;
     final hasExistingBatch = existingBatchRows.isNotEmpty;
 
     if (hasExistingBatch) {
@@ -215,6 +218,7 @@ extension on SupabaseTicketRepository {
           .select('id')
           .single();
       batchId = batchRow['id'] as String;
+      createdNewBatch = true;
     }
 
     final ticketRows = [
@@ -229,9 +233,34 @@ extension on SupabaseTicketRepository {
         },
     ];
 
-    await _client
-        .from(SupabaseTicketRepository._ticketsTable)
-        .insert(ticketRows);
+    try {
+      await _client
+          .from(SupabaseTicketRepository._ticketsTable)
+          .insert(ticketRows);
+    } on PostgrestException catch (error) {
+      if (createdNewBatch) {
+        await _client
+            .from(SupabaseTicketRepository._batchesTable)
+            .delete()
+            .eq('id', batchId);
+      }
+
+      if (error.code == '23505') {
+        throw StateError(
+          'Generated ticket codes already exist. Please use a different batch label, or refresh the page if this batch was already partially created.',
+        );
+      }
+
+      rethrow;
+    } catch (_) {
+      if (createdNewBatch) {
+        await _client
+            .from(SupabaseTicketRepository._batchesTable)
+            .delete()
+            .eq('id', batchId);
+      }
+      rethrow;
+    }
   }
 }
 
